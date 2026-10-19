@@ -6,7 +6,7 @@ Next.js 16 / React 19 / TypeScript staff CRM for the Rausch PT outreach system. 
 no provider credentials: every data call goes through a same-origin proxy to the backend in
 `../aws_deployed_raush_pt_stride_keap` (`/api/v1/dashboard/*`).
 
-Deployed on Vercel at `rpt-frontend-pi.vercel.app` (`vercel.json` runs `npm run build:vercel`, the native
+Deployed on Vercel at `rpt-frontend-gamma.vercel.app` (repo `rjm2007/rpt_frontend`, backend `https://demo.aibolt.ai`) (`vercel.json` runs `npm run build:vercel`, the native
 Next build). `npm run build` produces a Vinext/Vite bundle for Cloudflare Workers / OpenAI Sites instead.
 
 ## Folder map

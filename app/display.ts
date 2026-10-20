@@ -94,6 +94,7 @@ const STRIDE_OUTCOMES: Record<string, string> = {
 export function operationalMessage(value: unknown, context: OperationalContext = 'review') {
   const text = String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
   if (!text) return OPERATIONAL_DEFAULTS[context];
+  if (/^number blocked/.test(text)) return 'Number blocked: this patient asked not to be contacted. An admin can unblock it on this page to start outreach.';
   // Set by the Stride import when a booking falls through; staff need to know which way.
   if (text === 'unclear change in stride') return 'A change in Stride could not be matched to one visit. Check the appointment in Stride.';
   const stride = /^(cancelled|late cancel|no show|appointment removed) in stride$/.exec(text);

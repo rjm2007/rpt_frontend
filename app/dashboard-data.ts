@@ -34,6 +34,45 @@ export type Lead = {
   number_block?: NumberBlock | null;
   // Only for booked leads: when and how they were booked (board card).
   booking?: BoardBooking | null;
+  // The open review (needs_review), with the choices staff can make. Null when nothing is open.
+  review?: Review | null;
+  // Staff chose "Continue with calls only": no text goes to this lead.
+  texts_off?: boolean;
+};
+
+// Demo also has 'appointment' (Stride cancel / no-show) and 'booking' (agent could not confirm).
+export type ReviewGroup = 'name' | 'phone' | 'text' | 'call' | 'technical' | 'blocked' | 'appointment' | 'booking' | 'other';
+
+export type ReviewChoice =
+  | 'use_new_name' | 'keep_old_name' | 'different_person' | 'calls_only' | 'retry_texts'
+  | 'number_ok' | 'wrong_number' | 'continue' | 'close_phone_changed' | 'front_desk'
+  | 'restart_cadence' | 'send_booking_link';
+
+// One flag as the backend describes it (services/lead_review.py `describe`).
+export type Review = {
+  id: number | null;
+  code: string;
+  group: ReviewGroup;
+  group_label: string;
+  title: string;
+  reason: string;
+  proof: Array<{ label: string; value: string }>;
+  flagged_at: string | null;
+  source: string | null;
+  source_label: string;
+  landline: boolean;
+  transcript_url: string | null;
+  options: Array<{ choice: ReviewChoice; label: string }>;
+  open_count?: number;
+  also?: Array<{ title: string; flagged_at: string | null }>;
+};
+
+// GET /review/{lead_id}: what each choice will do, for the confirm pop-up.
+export type ReviewPreview = {
+  lead_id: string;
+  full_name: string;
+  review: Review | null;
+  options: Array<{ choice: ReviewChoice; label: string; effect: string; next_step: string; confirm: string }>;
 };
 
 export type BoardBooking = {
@@ -153,7 +192,7 @@ export type ActivityEntry = {
   occurred_at: string;
   actor_type: 'employee' | 'automation';
   actor_name: string;
-  category: 'employee' | 'calls' | 'messages' | 'appointments' | 'cadence';
+  category: 'employee' | 'calls' | 'messages' | 'appointments' | 'cadence' | 'review';
   title: string;
   details: Record<string, unknown>;
 };

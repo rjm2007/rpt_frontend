@@ -7,3 +7,18 @@ export async function dashboardFetch(url: string, options?: RequestInit): Promis
   }
   return response;
 }
+
+export class DashboardHttpError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`dashboard request failed (${status})`);
+    this.status = status;
+  }
+}
+
+// A plain GET through the proxy (the review pop-up's preview: never cached, it depends on the clock).
+export async function dashboardGet<T>(url: string): Promise<T> {
+  const response = await dashboardFetch(url);
+  if (!response.ok) throw new DashboardHttpError(response.status);
+  return response.json() as Promise<T>;
+}

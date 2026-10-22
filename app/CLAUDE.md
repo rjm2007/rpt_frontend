@@ -7,6 +7,7 @@ picks the page from the URL on the client.
 | File | Purpose |
 | --- | --- |
 | `dashboard-shell.tsx` (~1400 lines) | The whole UI. `DashboardShell` (layout, nav, data loading via `/api/dashboard/snapshot`, actions) and every page component: Home, Leads (list + Kanban board with drag-and-drop stage moves), Appointments, Review queue, Analytics, Administration (cadence studio, SMS templates), and the lead workspace (overview, SMS, calls, cadence runs with reschedule, appointments, activity). |
+| `review.ts`, `review-panel.tsx` | Needs Review: group filter and wording (tested in `review.test.ts`); `ReviewCard` (reason, proof, choices) and `ResolveDialog` (confirm pop-up from `GET review/{id}`, optional note). A flagged lead shows Resolve review instead of Resume. Demo also has the Appointment (restart / text booking link) and Booking (front desk only) groups. Needs the backend with migration 048 (the old free-text resolve returns 422). |
 | `dashboard-data.ts` | TypeScript types for backend responses (`Lead`, `LeadDetail`, `Snapshot`, `CadenceVersion`, `ActivityEntry`, …) and `emptySnapshot`. Keep in sync with `routes/dashboard.py` in the backend. |
 | `dashboard-client.ts` | `dashboardFetch()` wrapper for calls to the proxy (handles session expiry). |
 | `display.ts` | Formatting: clinic timezone (America/Los_Angeles), enum labels, status tones, activity descriptions, operational error messages. |

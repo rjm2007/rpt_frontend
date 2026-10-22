@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { filterReviews, groupCounts, RESOLVED_MESSAGE, reviewOf, stageAfter } from './review.ts';
+import { CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, RESOLVED_MESSAGE, reviewOf, stageAfter } from './review.ts';
 import type { Review } from './dashboard-data.ts';
 
 const textReview: Review = {
@@ -41,4 +41,15 @@ test('demo: appointment choices restart from Day 0 or text the link (which ends 
   assert.match(RESOLVED_MESSAGE.restart_cadence, /Day 0/);
   const booking: Review = { ...textReview, code: 'booking_unclear', group: 'booking', group_label: 'Booking', options: [{ choice: 'front_desk', label: 'Front desk will handle' }] };
   assert.deepEqual(groupCounts([{ needs_review: true, review_reason: null, review: booking }]), { all: 1, booking: 1 });
+});
+
+test('a review closed after the page loaded says why, or a plain fallback', () => {
+  const replaced = 'This lead was closed: a newer Sheet row uses the same phone number. Its history is kept.';
+  assert.equal(closedReviewMessage({ review: null, closed: { reason: 'replaced', message: replaced } }), replaced);
+  assert.equal(closedReviewMessage({ review: null, closed: { reason: 'resolved', message: 'This review was already resolved by Emma: Continue.' } }),
+    'This review was already resolved by Emma: Continue.');
+  // An older backend sends no `closed`.
+  assert.equal(closedReviewMessage({ review: null }), CLOSED_REVIEW_FALLBACK);
+  assert.equal(closedReviewMessage({ review: textReview, closed: null }), null);
+  assert.equal(closedReviewMessage(null), null);
 });

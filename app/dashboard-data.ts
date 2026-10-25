@@ -41,12 +41,16 @@ export type Lead = {
 };
 
 // Demo also has 'appointment' (Stride cancel / no-show) and 'booking' (agent could not confirm).
-export type ReviewGroup = 'name' | 'phone' | 'text' | 'call' | 'technical' | 'blocked' | 'appointment' | 'booking' | 'other';
+// 'details': location, case or date of birth changed in the Sheet (2026-10-25).
+export type ReviewGroup = 'name' | 'details' | 'phone' | 'text' | 'call' | 'technical' | 'blocked' | 'appointment' | 'booking' | 'other';
 
 export type ReviewChoice =
   | 'use_new_name' | 'keep_old_name' | 'different_person' | 'calls_only' | 'retry_texts'
   | 'number_ok' | 'wrong_number' | 'continue' | 'close_phone_changed' | 'front_desk'
-  | 'restart_cadence' | 'send_booking_link';
+  | 'restart_cadence' | 'send_booking_link'
+  // 2026-10-25: restart from Day 0 on the review card; "value" = location / case / date of birth.
+  | 'use_new_name_restart' | 'keep_old_name_restart'
+  | 'use_new_value' | 'keep_old_value' | 'use_new_value_restart' | 'keep_old_value_restart';
 
 // One flag as the backend describes it (services/lead_review.py `describe`).
 export type Review = {

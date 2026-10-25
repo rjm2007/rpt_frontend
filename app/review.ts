@@ -9,6 +9,7 @@ import type { Lead, Review, ReviewChoice, ReviewGroup, ReviewPreview } from './d
 export const REVIEW_GROUPS: Array<{ value: ReviewGroup | 'all'; label: string }> = [
   { value: 'all', label: 'All reasons' },
   { value: 'name', label: 'Name changed' },
+  { value: 'details', label: 'Details changed' },
   { value: 'text', label: 'Text failed' },
   { value: 'call', label: 'Call problem' },
   { value: 'technical', label: 'Not confirmed' },
@@ -49,8 +50,12 @@ export function groupCounts(leads: Array<Pick<Lead, 'review' | 'review_reason' |
 const CLOSING: ReadonlySet<ReviewChoice> = new Set(['different_person', 'wrong_number', 'close_phone_changed', 'front_desk', 'send_booking_link']);
 
 // Where the card goes once the choice is saved (the optimistic board update before the refetch).
+// Restart from Day 0 (2026-10-25: also offered with the name / details and on text, call,
+// technical and other reviews).
+const RESTARTING: ReadonlySet<ReviewChoice> = new Set(['restart_cadence', 'use_new_name_restart', 'keep_old_name_restart', 'use_new_value_restart', 'keep_old_value_restart']);
+
 export function stageAfter(choice: ReviewChoice): 'closed' | 'cadence' | 'new' {
-  if (choice === 'restart_cadence') return 'new';
+  if (RESTARTING.has(choice)) return 'new';
   return CLOSING.has(choice) ? 'closed' : 'cadence';
 }
 
@@ -67,6 +72,12 @@ export const RESOLVED_MESSAGE: Record<ReviewChoice, string> = {
   front_desk: 'Lead closed: handled by front desk.',
   restart_cadence: 'Cadence restarted from Day 0.',
   send_booking_link: 'Booking link is on its way by text.',
+  use_new_name_restart: 'New name saved. Cadence restarted from Day 0.',
+  keep_old_name_restart: 'Old name kept. Cadence restarted from Day 0.',
+  use_new_value: 'New value saved. Outreach continues.',
+  keep_old_value: 'Old value kept; the Sheet is set back. Outreach continues.',
+  use_new_value_restart: 'New value saved. Cadence restarted from Day 0.',
+  keep_old_value_restart: 'Old value kept; the Sheet is set back. Cadence restarted from Day 0.',
 };
 
 export const CLOSED_REVIEW_FALLBACK = 'This review is already closed.';
@@ -77,4 +88,11 @@ export const CLOSED_REVIEW_FALLBACK = 'This review is already closed.';
 export function closedReviewMessage(preview: Pick<ReviewPreview, 'review' | 'closed'> | null): string | null {
   if (!preview || preview.review) return null;
   return preview.closed?.message || CLOSED_REVIEW_FALLBACK;
+}
+
+// The confirm pop-up's error line when the backend refuses a choice (2026-10-25: a restart within
+// 10 minutes of the last one, a call still going out, another review still open).
+export function resolveRefusal(message: string): string {
+  const text = message.trim();
+  return text ? `Not saved: ${text}` : 'Not saved. Close this and try again.';
 }

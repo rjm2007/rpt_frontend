@@ -6,9 +6,9 @@ import { ModalShell } from './dashboard-controls';
 import { dashboardGet } from './dashboard-client';
 import type { Review, ReviewChoice, ReviewPreview } from './dashboard-data';
 import { CLINIC_TZ, CLINIC_TZ_LABEL } from './display';
-import { closedReviewMessage, RESOLVED_MESSAGE } from './review';
+import { closedReviewMessage, RESOLVED_MESSAGE, resolveRefusal } from './review';
 
-type ResolveAction = (path: string, method: string, body?: unknown, successMessage?: string) => Promise<Record<string, unknown> | null>;
+type ResolveAction = (path: string, method: string, body?: unknown, successMessage?: string, onError?: (message: string) => void) => Promise<Record<string, unknown> | null>;
 
 function flaggedOn(value: string | null) {
   if (!value) return 'Date not recorded';
@@ -41,6 +41,8 @@ export function ResolveDialog({ leadId, choice, action, onClose, onResolved }: {
   const [failed, setFailed] = useState(false);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  // A refused choice (e.g. restarted less than 10 minutes ago) is said here, not only in a toast.
+  const [refused, setRefused] = useState('');
   useEffect(() => {
     let live = true;
     // Never cached: the next step depends on the clock and on the lead's schedule right now.
@@ -57,9 +59,10 @@ export function ResolveDialog({ leadId, choice, action, onClose, onResolved }: {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
+    setRefused('');
     // With another review still open the lead stays paused; say so instead of "Outreach continues".
     const more = option?.next_step.includes('next open review');
-    const result = await action(`review/${leadId}/resolve`, 'POST', { choice, note: note.trim() || undefined }, more ? 'Saved. The next open review for this lead is shown now.' : RESOLVED_MESSAGE[choice]);
+    const result = await action(`review/${leadId}/resolve`, 'POST', { choice, note: note.trim() || undefined }, more ? 'Saved. The next open review for this lead is shown now.' : RESOLVED_MESSAGE[choice], setRefused);
     setSaving(false);
     if (result) { onResolved?.(choice); onClose(); }
   }
@@ -75,6 +78,7 @@ export function ResolveDialog({ leadId, choice, action, onClose, onResolved }: {
         : !preview ? <p className="muted">Checking what this will do…</p>
         : !option ? <p className="field-error" role="alert">This choice is no longer available for this review. Close this and pick again.</p>
         : <div className="resolve-summary"><p><strong>{option.effect}.</strong></p><p>{option.next_step}</p></div>}
+      {refused && <p className="field-error" role="alert">{resolveRefusal(refused)}</p>}
       <label className="field-label">Note (optional)<textarea value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="e.g. Called the patient, the number is a landline" /></label>
       <footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving || !option}>{saving ? 'Saving…' : 'Confirm'}</button></footer>
     </form>

@@ -25,7 +25,7 @@ const statusMeta: Record<LeadStage, { label: string }> = {
 };
 
 const locations = ['Dana Point', 'Laguna Niguel', 'Mission Viejo'];
-type DashboardAction = (path: string, method: string, body?: unknown, successMessage?: string) => Promise<Record<string, unknown> | null>;
+type DashboardAction = (path: string, method: string, body?: unknown, successMessage?: string, onError?: (message: string) => void) => Promise<Record<string, unknown> | null>;
 
 function actionFailureCopy(path: string) {
   if (/\/sms$/.test(path)) return 'Message was not sent. Review the phone number before trying again.';

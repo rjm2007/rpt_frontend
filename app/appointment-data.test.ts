@@ -15,7 +15,11 @@ import {
   statusBucket,
   tagLabel,
   workingHours,
+  nowMinutes,
+  openIntervals,
+  visitMark,
   type Appointment,
+  type OpenSlotDay,
 } from "./appointment-data.ts";
 
 const appointment = (id: string, start: string, end: string) =>
@@ -117,6 +121,9 @@ test("filters combine and the summary counts what the filters show", () => {
   assert.equal(filterAppointments(items, { location: "Laguna Niguel", tag: "stride_only" }).length, 2);
   assert.equal(filterAppointments(items, { location: "All Locations", status: "all", tag: "all" }).length, 5);
   assert.equal(filterAppointments(items, { practitioner: "5981" }).length, 1);
+  assert.equal(filterAppointments(items, { practitioners: ["5981"] }).length, 1);
+  assert.equal(filterAppointments(items, { practitioners: ["5980", "5981"] }).length, 5);
+  assert.equal(filterAppointments(items, { practitioners: [] }).length, 5);
   const summary = appointmentSummary(items);
   assert.equal(summary.total, 5);
   assert.deepEqual(summary.status, { booked: 2, completed: 1, cancelled: 1, no_show: 1, other: 0 });
@@ -124,4 +131,54 @@ test("filters combine and the summary counts what the filters show", () => {
   assert.deepEqual(summary.byLocation[0], { label: "Laguna Niguel", count: 4 });
   assert.deepEqual(summary.byPractitioner.map((r) => r.label), ["Joe Smith", "Thao Nguyen"]);
   assert.equal(summary.byCase.length, 2);
+});
+
+const openDay = (id: string, date: string, slots: [string, string][]): OpenSlotDay => ({
+  date,
+  practitioner_id: id,
+  practitioner_name: `P${id}`,
+  slots: slots.map(([start, end]) => ({ start_local: `${date}T${start}`, end_local: end.includes("T") ? end : `${date}T${end}` })),
+});
+test("open time is the union of a column's cached open slots, nothing estimated", () => {
+  const slots = [
+    // Same start, two visit lengths; a touching slot; a gap; a slot past midnight.
+    openDay("5980", "2026-10-27", [["09:00", "09:30"], ["09:00", "10:00"], ["10:00", "11:00"], ["13:00", "14:00"], ["23:30", "2026-10-28T00:00"]]),
+    openDay("5981", "2026-10-27", [["13:30", "15:00"]]),
+    openDay("5981", "2026-10-28", [["08:00", "09:00"]]),
+  ];
+  assert.deepEqual(openIntervals(slots, "2026-10-27", ["5980"]), [[540, 660], [780, 840], [1410, 1440]]);
+  // Week column: every practitioner shown counts.
+  assert.deepEqual(openIntervals(slots, "2026-10-27", ["5980", "5981"]), [[540, 660], [780, 900], [1410, 1440]]);
+  assert.deepEqual(openIntervals(slots, "2026-10-28", ["5980"]), []);
+  assert.deepEqual(openIntervals(undefined, "2026-10-27", ["5980"]), []);
+  assert.deepEqual(openIntervals(slots, "2026-10-27", []), []);
+});
+test("a block's status mark follows Stride's status; cancelled ones are struck", () => {
+  assert.deepEqual(
+    ["confirmed", "unmarked", "checked_in", "no_show"].map((s) => visitMark({ stride_status: s, state: "scheduled" }).mark),
+    ["✓", "○", "●", "No show"],
+  );
+  assert.equal(visitMark({ stride_status: "cancelled", state: "cancelled" }).struck, true);
+  assert.equal(visitMark({ stride_status: "late_cancel", state: "late_cancel" }).struck, true);
+  assert.equal(visitMark({ stride_status: "no_show", state: "no_show" }).struck, false);
+  // Ours, not in Stride yet: no Stride mark (the block says WAITING instead).
+  assert.deepEqual(visitMark({ stride_status: null, state: "scheduled" }), { mark: "", label: "", status: "", struck: false });
+  assert.equal(visitMark({ stride_status: "rescheduled", state: "scheduled" }).label, "Rescheduled");
+});
+test("the now line sits on today only, in the calendar timezone", () => {
+  const now = new Date("2026-10-27T17:45:00Z"); // 10:45 AM Pacific
+  assert.equal(nowMinutes("2026-10-27", "America/Los_Angeles", now), 645);
+  assert.equal(nowMinutes("2026-10-28", "America/Los_Angeles", now), null);
+  assert.equal(nowMinutes("2026-10-27", "America/New_York", now), 825);
+});
+test("visits at the same time sit side by side", () => {
+  const items = [
+    appointment("a", "2026-10-13T16:00Z", "2026-10-13T16:30Z"),
+    appointment("b", "2026-10-13T16:00Z", "2026-10-13T17:00Z"),
+    appointment("c", "2026-10-13T16:00Z", "2026-10-13T16:30Z"),
+  ];
+  assert.deepEqual(
+    layoutAppointments(items).map((e) => [e.item.id, e.lane, e.lanes]),
+    [["a", 0, 3], ["b", 1, 3], ["c", 2, 3]],
+  );
 });

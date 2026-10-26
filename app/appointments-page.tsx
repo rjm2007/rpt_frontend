@@ -33,6 +33,10 @@ import {
   filterAppointments,
   stateLabel,
   tagLabel,
+  VISIT_KINDS,
+  nowMinutes,
+  openIntervals,
+  visitMark,
   type BookingTag,
   type StatusBucket,
 } from "./appointment-data";
@@ -186,11 +190,6 @@ const bookedOn = (iso: string | null, timezone: string) =>
         timeZone: timezone,
       })
     : "";
-// A visit that is off the books says so on the block itself, not only in the details.
-const statusNote = (item: Appointment) =>
-  occupiesTime(item) && item.state !== "completed"
-    ? ""
-    : `${stateLabel(item.state)} · `;
 function Skeleton({ w = "100%", h = 14 }: { w?: string; h?: number }) {
   return (
     <span
@@ -289,6 +288,13 @@ function CalendarSkeleton({
   );
 }
 
+// Who the visit belongs to, in the calendar's short words (backend `source`, else the tag).
+const sourceLabel2 = (a: Appointment) =>
+  ({ elliot: "Elliot", sheet: "Sheet", stride: "Stride" })[a.source] ??
+  { elliot: "Elliot", sheet_lead: "Sheet", stride_only: "Stride" }[a.tag] ??
+  "Sheet";
+// Block colour by visit kind: first visit blue, follow-up teal, anything else violet.
+const kindTone = { first_visit: "", follow_up: "teal", other: "violet" };
 function BookingBlock({
   item,
   selected,
@@ -302,24 +308,40 @@ function BookingBlock({
   compact?: boolean;
   onChoose: (a: Appointment) => void;
 }) {
+  const mark = visitMark(item);
+  const waiting = item.approval === "waiting";
+  const name = item.patient_name || item.full_name;
+  const visit = item.visit_type || item.type;
+  const source = sourceLabel2(item);
+  const said = waiting ? "Waiting for approval in Stride" : mark.label;
   return (
     <button
       type="button"
-      className={`schedule-booking ${tone(item.case_title)} ${selected ? "selected" : ""} ${compact ? "compact" : ""} ${occupiesTime(item) ? "" : "inactive"}`}
+      className={`schedule-booking ${kindTone[item.visit_kind ?? "other"] ?? ""} ${waiting ? "waiting" : ""} ${mark.status === "no_show" ? "no-show" : ""} ${selected ? "selected" : ""} ${compact ? "compact" : ""} ${mark.struck ? "inactive" : ""}`}
       aria-pressed={selected}
-      aria-label={`${item.full_name}, ${item.case_title}, ${timeRange(item, timezone)}, ${stateLabel(item.state)}, ${tagLabel(item.tag)}`}
-      title={`${item.full_name} · ${timeRange(item, timezone)} · ${item.practitioner_name} · ${stateLabel(item.state)} · ${tagLabel(item.tag)}`}
+      aria-label={[name, visit, timeRange(item, timezone), said, `${source} booking`]
+        .filter(Boolean)
+        .join(", ")}
+      title={[name, timeRange(item, timezone), visit, item.practitioner_name, said, source]
+        .filter(Boolean)
+        .join(" · ")}
       onClick={() => onChoose(item)}
     >
-      <strong>{item.full_name}</strong>
-      <span>{timeRange(item, timezone)}</span>
+      <span className="booking-head">
+        <strong>{name}</strong>
+        {(waiting || mark.mark) && (
+          <span className="schedule-booking-mark" aria-hidden="true">
+            {waiting && <em>WAITING</em>}
+            {mark.mark && <i className={mark.status}>{mark.mark}</i>}
+          </span>
+        )}
+      </span>
+      <small className="booking-source">{source}</small>
       {!compact && (
-        <small>
-          {statusNote(item)}
-          {item.case_title}
-        </small>
+        <span className="booking-time">
+          {timeRange(item, timezone)} · {visit}
+        </span>
       )}
-      <BookingTagChip tag={item.tag} />
     </button>
   );
 }
@@ -331,6 +353,7 @@ export function AppointmentsPage({
   initialLeadId,
   leadId,
   initialDay,
+  userId = "",
 }: {
   snapshot: Snapshot;
   location: string;
@@ -338,13 +361,15 @@ export function AppointmentsPage({
   initialLeadId: string | null;
   leadId?: string;
   initialDay?: string;
+  userId?: string;
 }) {
   const search = useSearchParams();
   const [chosenDay, setChosenDay] = useState("");
   const [view, setView] = useState<CalendarView>("Day");
   const [mode, setMode] = useState("Calendar");
   const [caseTitle, setCaseTitle] = useState("all");
-  const [practitioner, setPractitioner] = useState("all");
+  // Practitioner ids ticked in the filters panel; none ticked = everyone.
+  const [picked, setPicked] = useState<string[]>([]);
   // The calendar's own location filter starts from the top-bar location and can differ.
   const [calendarLocation, setCalendarLocation] = useState("");
   const [status, setStatus] = useState<StatusBucket | "all">("all");
@@ -365,6 +390,26 @@ export function AppointmentsPage({
     practitioner?: string;
   } | null>(null);
   const details = useRef<HTMLElement>(null);
+  // The filters panel remembers open/closed per staff member in this browser.
+  const panelKey = `rpt-calendar-filters:${userId}`;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  useEffect(() => {
+    // localStorage exists only in the browser: read it after hydration.
+    try {
+      setFiltersOpen(localStorage.getItem(panelKey) === "open"); // eslint-disable-line react-hooks/set-state-in-effect
+    } catch {
+      /* storage unavailable */
+    }
+  }, [panelKey]);
+  function toggleFilters() {
+    const next = !filtersOpen;
+    setFiltersOpen(next);
+    try {
+      localStorage.setItem(panelKey, next ? "open" : "closed");
+    } catch {
+      /* storage unavailable */
+    }
+  }
   const timezone = loaded?.data.timezone ?? CLINIC_TZ;
   const linkedDay = search.get("date");
   const day =
@@ -455,12 +500,12 @@ export function AppointmentsPage({
     ]),
   ].sort();
   const practitioners = resources.filter(
-    (p) => practitioner === "all" || p.id === practitioner,
+    (p) => !picked.length || picked.includes(p.id),
   );
   const cases = [...new Set(appointments.map((a) => a.case_title))].sort();
   const matching = filterAppointments(appointments, {
     caseTitle,
-    practitioner,
+    practitioners: picked,
     status,
     tag,
   });
@@ -472,7 +517,7 @@ export function AppointmentsPage({
   const summary = appointmentSummary(visible);
   const filtered =
     caseTitle !== "all" ||
-    practitioner !== "all" ||
+    picked.length > 0 ||
     status !== "all" ||
     tag !== "all" ||
     Boolean(calendarLocation && calendarLocation !== location);
@@ -489,23 +534,6 @@ export function AppointmentsPage({
     .filter(occupiesTime)
     .reduce((sum, a) => sum + (a.duration_minutes ?? 0) / 60, 0);
   const percent = capacity ? Math.round((occupied / capacity) * 100) : 0;
-  const hourStart = Math.min(
-    9,
-    ...visible.map((a) => Math.floor(minutesOf(a) / 60)),
-  );
-  const hourEnd = Math.min(
-    24,
-    Math.max(
-      17,
-      ...visible.map((a) =>
-        Math.ceil((minutesOf(a) + (a.duration_minutes ?? 30)) / 60),
-      ),
-    ),
-  );
-  const hours = Array.from(
-    { length: hourEnd - hourStart },
-    (_, i) => i + hourStart,
-  );
   const practitionerOptions = [
     ...new Map(resources.map((p) => [p.id, p])).values(),
   ];
@@ -529,28 +557,67 @@ export function AppointmentsPage({
             ]),
           ).values(),
         ];
+  // A clinician's role (credentials) comes with their visits; the practitioner list has none.
+  const roles = new Map(
+    (data?.appointments ?? [])
+      .filter((a) => a.clinician?.role)
+      .map((a) => [a.practitioner_id, a.clinician!.role!]),
+  );
   const columns =
     view === "Week"
       ? days.map((d) => ({
           key: d,
           day: d,
           title: dateLabel(d, { weekday: "short", day: "numeric" }),
-          subtitle: "All selected practitioners",
+          subtitle:
+            practitionerIds.length === 1
+              ? practitioners[0].name
+              : "All selected practitioners",
           practitioner: undefined,
           records: matching.filter((a) => dayOf(a) === d),
+          // White = open in Stride for any practitioner shown, grey = not open.
+          open: openIntervals(data?.open_slots, d, practitionerIds),
         }))
       : dayResources.map((p) => ({
           key: `${p.id}:${p.location}`,
           day,
           title: view === "Locations" ? p.location : p.name,
-          subtitle: view === "Locations" ? p.name : p.location,
+          subtitle:
+            view === "Locations"
+              ? p.name
+              : [roles.get(p.id), p.location].filter(Boolean).join(" · "),
           practitioner: p.id,
           records: visible.filter(
             (a) =>
               a.practitioner_id === p.id &&
               (view !== "Locations" || a.location === p.location),
           ),
+          open: openIntervals(data?.open_slots, day, [p.id]),
         }));
+  // Rows from 9 AM to 5 PM at least, stretched to every visit and open slot shown.
+  const opens = columns.flatMap((c) => c.open);
+  const hourStart = Math.min(
+    9,
+    ...visible.map((a) => Math.floor(minutesOf(a) / 60)),
+    ...opens.map(([start]) => Math.floor(start / 60)),
+  );
+  const hourEnd = Math.min(
+    24,
+    Math.max(
+      17,
+      ...visible.map((a) =>
+        Math.ceil((minutesOf(a) + (a.duration_minutes ?? 30)) / 60),
+      ),
+      ...opens.map(([, end]) => Math.ceil(end / 60)),
+    ),
+  );
+  const hours = Array.from(
+    { length: hourEnd - hourStart },
+    (_, i) => i + hourStart,
+  );
+  const halfHours = hours.flatMap((h) => [h * 60, h * 60 + 30]);
+  const toY = (minutes: number) =>
+    ((minutes - hourStart * 60) / 60) * HOUR_HEIGHT;
 
   function choose(a: Appointment) {
     setSelectedId(a.id);
@@ -634,7 +701,6 @@ export function AppointmentsPage({
             >
               <Arrow />
             </button>
-            <h2>{periodLabel}</h2>
             <button
               className="calendar-icon-button"
               type="button"
@@ -650,6 +716,8 @@ export function AppointmentsPage({
             >
               Today
             </button>
+            <h2>{periodLabel}</h2>
+            <span className="schedule-zone">{calendarZoneLabel(timezone)}</span>
           </div>
           <div
             className="schedule-view-switch"
@@ -668,97 +736,15 @@ export function AppointmentsPage({
               </button>
             ))}
           </div>
-        </div>
-        <div className="schedule-filters">
-          {!leadId && (
-            <label>
-              Location
-              <SelectMenu
-                ariaLabel="Filter appointments by location"
-                value={place}
-                onChange={setCalendarLocation}
-                options={[
-                  { value: "All Locations", label: "All locations" },
-                  ...locationOptions.map((l) => ({ value: l, label: l })),
-                ]}
-              />
-            </label>
-          )}
-          <label>
-            Case
-            <SelectMenu
-              ariaLabel="Filter appointments by case"
-              value={caseTitle}
-              onChange={setCaseTitle}
-              options={[
-                { value: "all", label: "All cases" },
-                ...cases.map((c) => ({ value: c, label: c })),
-              ]}
-            />
-          </label>
-          <label>
-            Practitioner
-            <SelectMenu
-              ariaLabel="Filter appointments by practitioner"
-              value={practitioner}
-              onChange={setPractitioner}
-              options={[
-                { value: "all", label: "All practitioners" },
-                ...practitionerOptions.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                })),
-              ]}
-            />
-          </label>
-          <label>
-            Status
-            <SelectMenu
-              ariaLabel="Filter appointments by status"
-              value={status}
-              onChange={(v) => setStatus(v as StatusBucket | "all")}
-              options={[
-                { value: "all", label: "All statuses" },
-                ...STATUS_BUCKETS.map((b) => ({
-                  value: b.value,
-                  label: b.label,
-                })),
-              ]}
-            />
-          </label>
-          {!leadId && (
-            <label>
-              Booked by
-              <SelectMenu
-                ariaLabel="Filter appointments by who booked them"
-                value={tag}
-                onChange={(v) => setTag(v as BookingTag | "all")}
-                options={[
-                  { value: "all", label: "Everyone" },
-                  ...BOOKING_TAGS.map((t) => ({
-                    value: t.value,
-                    label: t.label,
-                  })),
-                ]}
-              />
-            </label>
-          )}
-          {filtered && (
-            <button
-              className="link-button"
-              type="button"
-              onClick={() => {
-                setCaseTitle("all");
-                setPractitioner("all");
-                setStatus("all");
-                setTag("all");
-                setCalendarLocation("");
-              }}
-            >
-              Reset filters
-            </button>
-          )}
-          <span>Times shown in {calendarZoneLabel(timezone)}</span>
+          <button
+            className={`secondary schedule-filters-button ${filtersOpen ? "selected" : ""}`}
+            type="button"
+            aria-expanded={filtersOpen}
+            aria-controls="calendar-filters"
+            onClick={toggleFilters}
+          >
+            Filters{filtered ? " •" : ""}
+          </button>
         </div>
         {error && (
           <div className="calendar-notice" role="alert">
@@ -782,8 +768,121 @@ export function AppointmentsPage({
           </p>
         )}
         <div
-          className={`schedule-layout ${selected && detailsOpen ? "with-details" : ""}`}
+          className={`schedule-layout ${filtersOpen ? "with-filters" : ""} ${selected && detailsOpen ? "with-details" : ""}`}
         >
+          {filtersOpen && (
+            <aside
+              className="calendar-filters"
+              id="calendar-filters"
+              aria-label="Calendar filters"
+            >
+              {!leadId && (
+                <label>
+                  Location
+                  <SelectMenu
+                    ariaLabel="Filter appointments by location"
+                    value={place}
+                    onChange={setCalendarLocation}
+                    options={[
+                      { value: "All Locations", label: "All locations" },
+                      ...locationOptions.map((l) => ({ value: l, label: l })),
+                    ]}
+                  />
+                </label>
+              )}
+              <label>
+                Case
+                <SelectMenu
+                  ariaLabel="Filter appointments by case"
+                  value={caseTitle}
+                  onChange={setCaseTitle}
+                  options={[
+                    { value: "all", label: "All cases" },
+                    ...cases.map((c) => ({ value: c, label: c })),
+                  ]}
+                />
+              </label>
+              <fieldset className="calendar-filter-people">
+                <legend>Practitioners</legend>
+                {practitionerOptions.map((p) => (
+                  <label key={p.id}>
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(p.id)}
+                      onChange={(e) =>
+                        setPicked((now) =>
+                          e.target.checked
+                            ? [...now, p.id]
+                            : now.filter((id) => id !== p.id),
+                        )
+                      }
+                    />
+                    {p.name}
+                  </label>
+                ))}
+                {!practitionerOptions.length && <small>None in this location</small>}
+                {!picked.length && practitionerOptions.length > 0 && (
+                  <small>None ticked: everyone shows</small>
+                )}
+              </fieldset>
+              <label>
+                Status
+                <SelectMenu
+                  ariaLabel="Filter appointments by status"
+                  value={status}
+                  onChange={(v) => setStatus(v as StatusBucket | "all")}
+                  options={[
+                    { value: "all", label: "All statuses" },
+                    ...STATUS_BUCKETS.map((b) => ({
+                      value: b.value,
+                      label: b.label,
+                    })),
+                  ]}
+                />
+              </label>
+              {!leadId && (
+                <label>
+                  Booked by
+                  <SelectMenu
+                    ariaLabel="Filter appointments by who booked them"
+                    value={tag}
+                    onChange={(v) => setTag(v as BookingTag | "all")}
+                    options={[
+                      { value: "all", label: "Everyone" },
+                      ...BOOKING_TAGS.map((t) => ({
+                        value: t.value,
+                        label: t.label,
+                      })),
+                    ]}
+                  />
+                </label>
+              )}
+              {filtered && (
+                <button
+                  className="link-button"
+                  type="button"
+                  onClick={() => {
+                    setCaseTitle("all");
+                    setPicked([]);
+                    setStatus("all");
+                    setTag("all");
+                    setCalendarLocation("");
+                  }}
+                >
+                  Reset filters
+                </button>
+              )}
+              <div className="calendar-legend" aria-label="Colour key">
+                {VISIT_KINDS.map((k) => (
+                  <span key={k.value} className={`legend-${k.value}`}>
+                    {k.label}
+                  </span>
+                ))}
+                <span className="legend-waiting">Waiting for Stride</span>
+                <span>✓ confirmed · ○ unmarked · ● checked in</span>
+              </div>
+            </aside>
+          )}
           <div className="schedule-main">
             {loading && !data ? (
               <div className="schedule-occupancy" aria-hidden="true">
@@ -989,9 +1088,7 @@ export function AppointmentsPage({
                   Open calendar space does not guarantee Stride availability.
                 </p>
                 {practitionerOptions
-                  .filter(
-                    (p) => practitioner === "all" || p.id === practitioner,
-                  )
+                  .filter((p) => !picked.length || picked.includes(p.id))
                   .map((p) => {
                     const records = visible.filter(
                       (a) => a.practitioner_id === p.id && occupiesTime(a),
@@ -1096,22 +1193,36 @@ export function AppointmentsPage({
                     <div className="schedule-columns">
                       {columns.map((c) => (
                         <div className="schedule-column" key={c.key}>
-                          {hours.map((h) => {
-                            const all = appointments.filter(
+                          {c.open.map(([start, end]) => (
+                            <span
+                              className="schedule-open"
+                              key={start}
+                              aria-hidden="true"
+                              style={{
+                                top: toY(Math.max(start, hourStart * 60)),
+                                height:
+                                  toY(Math.min(end, hourEnd * 60)) -
+                                  toY(Math.max(start, hourStart * 60)),
+                              }}
+                            />
+                          ))}
+                          {halfHours.map((m) => {
+                            const overlaps = (a: Appointment) =>
+                              minutesOf(a) < m + 30 &&
+                              minutesOf(a) + (a.duration_minutes ?? 30) > m;
+                            const occupied = appointments.some(
                               (a) =>
                                 dayOf(a) === c.day &&
-                                (!c.practitioner ||
-                                  a.practitioner_id === c.practitioner) &&
-                                occupiesTime(a),
-                            );
-                            const occupied = all.some(
-                              (a) =>
-                                minutesOf(a) < (h + 1) * 60 &&
-                                minutesOf(a) + (a.duration_minutes ?? 30) >
-                                  h * 60,
+                                (c.practitioner
+                                  ? a.practitioner_id === c.practitioner
+                                  : practitionerIds.includes(
+                                      a.practitioner_id,
+                                    )) &&
+                                occupiesTime(a) &&
+                                overlaps(a),
                             );
                             return (
-                              <div className="schedule-hour-cell" key={h}>
+                              <div className={`schedule-hour-cell half ${m % 60 ? "" : "hour"}`} key={m}>
                                 {!occupied && data.booking_enabled && (
                                   <button
                                     className="schedule-open-slot"
@@ -1127,36 +1238,38 @@ export function AppointmentsPage({
                                     ＋
                                   </button>
                                 )}
-                                {occupied &&
-                                  !c.records.some(
-                                    (a) =>
-                                      minutesOf(a) < (h + 1) * 60 &&
-                                      minutesOf(a) +
-                                        (a.duration_minutes ?? 30) >
-                                        h * 60,
-                                  ) && (
-                                    <small className="schedule-filtered">
-                                      Booked · filtered
-                                    </small>
-                                  )}
+                                {occupied && !c.records.some(overlaps) && (
+                                  <small className="schedule-filtered">
+                                    Booked · filtered
+                                  </small>
+                                )}
                               </div>
                             );
                           })}
+                          {(() => {
+                            const now = nowMinutes(c.day, timezone);
+                            return now !== null &&
+                              now >= hourStart * 60 &&
+                              now <= hourEnd * 60 ? (
+                              <span
+                                className="schedule-now"
+                                style={{ top: toY(now) }}
+                                aria-hidden="true"
+                              />
+                            ) : null;
+                          })()}
                           {layoutAppointments(c.records).map(
                             ({ item: a, lane, lanes }) => (
                               <div
                                 className="schedule-booking-position"
                                 key={a.id}
                                 style={{
-                                  top:
-                                    ((minutesOf(a) - hourStart * 60) / 60) *
-                                      HOUR_HEIGHT +
-                                    2,
+                                  top: toY(minutesOf(a)) + 1,
                                   height: Math.max(
-                                    26,
+                                    28,
                                     ((a.duration_minutes ?? 30) / 60) *
                                       HOUR_HEIGHT -
-                                      4,
+                                      2,
                                   ),
                                   left: `calc(${(lane / lanes) * 100}% + 3px)`,
                                   width: `calc(${100 / lanes}% - 6px)`,
@@ -1168,7 +1281,7 @@ export function AppointmentsPage({
                                   timezone={timezone}
                                   compact={
                                     view === "Week" ||
-                                    (a.duration_minutes ?? 30) < 90
+                                    (a.duration_minutes ?? 30) < 50
                                   }
                                   onChoose={choose}
                                 />
@@ -1321,7 +1434,7 @@ export function AppointmentsPage({
             setChosenDay(d);
             if (id) setSelectedId(id);
             setCaseTitle("all");
-            setPractitioner("all");
+            setPicked([]);
             setStatus("all");
             setTag("all");
             setDetailsOpen(true);

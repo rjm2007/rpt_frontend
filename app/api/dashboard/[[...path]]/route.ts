@@ -5,7 +5,7 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 // Every backend route the browser may reach, listed explicitly. A path missing
 // from here is rejected with "dashboard path not allowed", so this must be
 // updated whenever a new dashboard endpoint is added.
-const ALLOWED_PATH = /^(snapshot|blocked-numbers(?:\/unblock)?|keap-sync|appointment-calendar|appointment-slots|appointments|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|contact-rules|stage|sms|outreach-events\/\d+))?)?|review\/[0-9a-f-]+(?:\/resolve)?|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?)$/i;
+const ALLOWED_PATH = /^(snapshot|blocked-numbers(?:\/unblock)?|keap-sync|appointment-calendar|appointment-slots|appointment-approvals|appointments|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|contact-rules|stage|sms|outreach-events\/\d+))?)?|review\/[0-9a-f-]+(?:\/resolve)?|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?)$/i;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   if (!ALLOWED_METHODS.has(request.method)) {

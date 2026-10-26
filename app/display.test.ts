@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display.ts';
+import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display.ts';
 import type { ActivityEntry } from './dashboard-data';
 
 test('activity shows every entry, staff and automated, and search narrows it', () => {
@@ -118,3 +118,14 @@ test('activity shows review flags and resolutions next to outreach', () => {
   ];
   assert.deepEqual(leadActivity(entries).map((item) => item.id), ['f', 'r', 'o']);
 });
+
+test('booked is final: booked cards cannot be moved on the board, the refusal text passes as is', () => {
+  assert.equal(canMoveOnBoard('booked'), false);
+  for (const stage of ['new', 'cadence', 'attention', 'closed'] as const) assert.equal(canMoveOnBoard(stage), true);
+  assert.equal(BOOKED_LOCKED_HINT, "Booked leads can't be moved. Cancel the visit in Stride to change it.");
+  const refusal = 'This lead is booked. To change it, cancel the visit in Stride; the lead comes back for review by itself.';
+  assert.equal(clientErrorMessage(refusal, 'The lead status could not be updated. Please try again.'), refusal);
+  // Other text naming Stride is still replaced.
+  assert.notEqual(clientErrorMessage('Stride HTTP 500', 'fallback'), 'Stride HTTP 500');
+});
+

@@ -1,4 +1,4 @@
-import type { ActivityEntry, NumberBlock } from './dashboard-data';
+import type { ActivityEntry, LeadStage, NumberBlock } from './dashboard-data';
 
 export const CLINIC_TZ = 'America/Los_Angeles';
 export const CLINIC_TZ_LABEL = 'PT';
@@ -132,9 +132,19 @@ export function operationalMessage(value: unknown, context: OperationalContext =
   return OPERATIONAL_DEFAULTS[context];
 }
 
+// Booked is final (owner, 2026-10-26): staff never move a booked lead on the board. The only way out
+// is the visit cancelled in Stride, which brings the lead back for review by itself.
+export const BOOKED_LOCKED_HINT = "Booked leads can't be moved. Cancel the visit in Stride to change it.";
+export function canMoveOnBoard(stage: LeadStage) {
+  return stage !== 'booked';
+}
+// The backend's own words for a refused board move; they name Stride on purpose, so they pass as is.
+const BOOKED_IS_FINAL = /^This lead is booked\. /;
+
 export function clientErrorMessage(value: unknown, fallback = OPERATIONAL_DEFAULTS.action) {
   const text = String(value ?? '').trim();
   if (!text) return fallback;
+  if (BOOKED_IS_FINAL.test(text)) return text;
   if (!TECHNICAL_DETAIL.test(text)) return text;
   const specific = operationalMessage(text, 'action');
   return specific === OPERATIONAL_DEFAULTS.action ? fallback : specific;

@@ -29,5 +29,8 @@ conversations/calls, cadence, appointments, activity) · `/appointments` · `/re
 ## Notes
 
 - The board column comes from the backend's `lead.stage`; the frontend does not compute stages.
+- Booked is final (owner, 2026-10-26): Booked cards are not draggable (`canMoveOnBoard` in `display.ts`, tooltip
+  `BOOKED_LOCKED_HINT`); the backend refuses the move too (409), and `clientErrorMessage` shows that detail as is.
+  The only way out is the visit cancelled in Stride (the lead comes back for review).
 - Add new pages inside `DashboardShell`'s path routing, not as new Next.js route folders, unless they need
   server-side logic.

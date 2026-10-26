@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   CSSProperties,
-  FormEvent,
   ReactNode,
   RefObject,
   useEffect,
@@ -12,7 +11,7 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { ModalShell, SelectMenu } from "./dashboard-controls";
+import { SelectMenu } from "./dashboard-controls";
 import { dashboardFetch } from "./dashboard-client";
 import { clientErrorMessage, CLINIC_TZ, timezoneLabel } from "./display";
 import type { Lead, Snapshot } from "./dashboard-data";
@@ -46,13 +45,6 @@ import {
   type StatusBucket,
 } from "./appointment-data";
 
-type Action = (
-  path: string,
-  method: string,
-  body?: unknown,
-  message?: string,
-  onError?: (message: string) => void,
-) => Promise<Record<string, unknown> | null>;
 const views: CalendarView[] = ["Day", "Week", "Month", "Locations", "Capacity"];
 const dateLabel = (
   day: string,
@@ -616,16 +608,12 @@ function CalendarLegend({
 export function AppointmentsPage({
   snapshot,
   location,
-  action,
-  initialLeadId,
   leadId,
   initialDay,
   userId = "",
 }: {
   snapshot: Snapshot;
   location: string;
-  action: Action;
-  initialLeadId: string | null;
   leadId?: string;
   initialDay?: string;
   userId?: string;
@@ -655,10 +643,6 @@ export function AppointmentsPage({
     message: string;
   } | null>(null);
   const [reload, setReload] = useState(0);
-  const [draft, setDraft] = useState<{
-    day: string;
-    practitioner?: string;
-  } | null>(null);
   // The filters panel remembers open/closed per staff member in this browser.
   const panelKey = `rpt-calendar-filters:${userId}`;
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -1492,22 +1476,6 @@ export function AppointmentsPage({
                                 className={`schedule-hour-cell half ${m % 60 ? "" : "hour"}`}
                                 key={m}
                               >
-                                {!occupied && data.booking_enabled && (
-                                  <button
-                                    className="schedule-open-slot"
-                                    type="button"
-                                    tabIndex={-1}
-                                    aria-label={`Find availability for ${c.title} on ${dateLabel(c.day)}`}
-                                    onClick={() =>
-                                      setDraft({
-                                        day: c.day,
-                                        practitioner: c.practitioner,
-                                      })
-                                    }
-                                  >
-                                    ＋
-                                  </button>
-                                )}
                                 {occupied && !c.records.some(overlaps) && (
                                   <small className="schedule-filtered">
                                     Booked · filtered
@@ -1588,288 +1556,6 @@ export function AppointmentsPage({
           onClose={closeCard}
         />
       )}
-      {draft && (
-        <AppointmentEditor
-          draft={draft}
-          leads={snapshot.leads}
-          initialLeadId={initialLeadId ?? search.get("lead")}
-          bookingEnabled={data?.booking_enabled ?? false}
-          action={action}
-          onClose={() => setDraft(null)}
-          onSaved={(d) => {
-            setChosenDay(d);
-            setCaseTitle("all");
-            setPicked([]);
-            setStatus("all");
-            setTag("all");
-            setReload((n) => n + 1);
-            setDraft(null);
-          }}
-        />
-      )}
     </div>
-  );
-}
-
-type Slot = {
-  id: number;
-  start_utc: string;
-  end_utc: string;
-  display_name: string;
-  stride_user_id: number;
-};
-type SlotResponse = {
-  slots: Slot[];
-  location: string;
-  case_title: string;
-  timezone: string;
-  duration_minutes: number;
-  cache_fresh: boolean;
-};
-function AppointmentEditor({
-  draft,
-  leads,
-  initialLeadId,
-  bookingEnabled,
-  action,
-  onClose,
-  onSaved,
-}: {
-  draft: { day: string; practitioner?: string };
-  leads: Snapshot["leads"];
-  initialLeadId: string | null;
-  bookingEnabled: boolean;
-  action: Action;
-  onClose: () => void;
-  onSaved: (day: string, id?: string) => void;
-}) {
-  const eligible = leads.filter(
-    (l) =>
-      !l.number_block &&
-      !l.needs_review &&
-      !["booked", "do_not_contact"].includes(l.status),
-  );
-  const [leadId, setLeadId] = useState(
-    eligible.some((l) => l.id === initialLeadId) ? initialLeadId! : "",
-  );
-  const [start, setStart] = useState(draft.day);
-  const [loadedSlots, setLoadedSlots] = useState<{
-    key: string;
-    data: SlotResponse;
-  } | null>(null);
-  const [slotId, setSlotId] = useState("");
-  const chosenPractitioner = draft.practitioner;
-  const queryKey = `${leadId}:${start}:${chosenPractitioner ?? ""}`;
-  const slots = loadedSlots?.key === queryKey ? loadedSlots.data : null;
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const loading =
-    bookingEnabled && Boolean(leadId && start) && !slots && !error;
-  const changeLead = (id: string) => {
-    setLeadId(id);
-    setSlotId("");
-    setError("");
-  };
-  const changeStart = (day: string) => {
-    setStart(day);
-    setSlotId("");
-    setError("");
-  };
-  const canClose = () => {
-    if (!saving) onClose();
-  };
-  useEffect(() => {
-    if (!leadId || !bookingEnabled || !start) return;
-    const controller = new AbortController();
-    dashboardFetch(
-      `/api/dashboard/appointment-slots?lead_id=${encodeURIComponent(leadId)}&start=${start}&days=7${chosenPractitioner && /^\d+$/.test(chosenPractitioner) ? `&practitioner_id=${chosenPractitioner}` : ""}`,
-      { signal: controller.signal },
-    )
-      .then(async (response) => {
-        const result = (await response.json()) as SlotResponse & {
-          detail?: string;
-        };
-        if (!response.ok)
-          throw new Error(
-            clientErrorMessage(
-              result.detail,
-              "Availability could not be loaded for this lead.",
-            ),
-          );
-        return result;
-      })
-      .then((result) => {
-        if (!controller.signal.aborted)
-          setLoadedSlots({ key: queryKey, data: result });
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted)
-          setError(
-            e instanceof Error
-              ? e.message
-              : "Availability could not be loaded.",
-          );
-      });
-    return () => controller.abort();
-  }, [leadId, start, bookingEnabled, chosenPractitioner, queryKey]);
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError("");
-    const saved = await action(
-      "appointments",
-      "POST",
-      { lead_id: leadId, slot_id: Number(slotId) },
-      "Appointment confirmed in Stride.",
-      setError,
-    );
-    setSaving(false);
-    if (saved)
-      onSaved(
-        String(saved.start_day ?? start),
-        saved.id ? String(saved.id) : undefined,
-      );
-  }
-  const filteredSlots = (slots?.slots ?? []).filter(
-    (s) =>
-      !draft.practitioner || String(s.stride_user_id) === draft.practitioner,
-  );
-  return (
-    <ModalShell
-      className="appointment-editor"
-      labelId="appointment-editor-title"
-      onClose={canClose}
-    >
-      <header>
-        <div>
-          <h2 id="appointment-editor-title">New appointment</h2>
-          <p>Choose a lead and an available Stride appointment.</p>
-        </div>
-        <button
-          className="close-button"
-          type="button"
-          disabled={saving}
-          aria-label="Close new appointment"
-          onClick={canClose}
-        >
-          ×
-        </button>
-      </header>
-      <form onSubmit={submit}>
-        {!bookingEnabled && (
-          <p className="calendar-notice" role="status">
-            New bookings are switched off for this practice. Existing
-            appointments remain available in the calendar.
-          </p>
-        )}
-        <fieldset disabled={saving || !bookingEnabled}>
-          <label className="field-label">
-            Lead
-            <SelectMenu
-              ariaLabel="Lead to book"
-              value={leadId}
-              onChange={changeLead}
-              options={[
-                { value: "", label: "Choose a lead" },
-                ...eligible.map((l) => ({
-                  value: l.id,
-                  label: `${l.full_name} · ${l.location ?? "No location"}`,
-                })),
-              ]}
-            />
-          </label>
-          <label className="field-label">
-            Search from
-            <input
-              type="date"
-              value={start}
-              required
-              onChange={(e) => changeStart(e.target.value)}
-            />
-          </label>
-          {slots && (
-            <div className="booking-context">
-              <strong>{slots.case_title}</strong>
-              <span>
-                {slots.location} · {slots.duration_minutes} minutes ·{" "}
-                {calendarZoneLabel(slots.timezone)}
-              </span>
-            </div>
-          )}
-          {loading ? (
-            <p role="status" className="appointment-note">
-              Checking availability…
-            </p>
-          ) : (
-            slots && (
-              <fieldset className="appointment-slot-picker">
-                <legend>Available appointments</legend>
-                {filteredSlots.length ? (
-                  filteredSlots.map((s) => (
-                    <label
-                      className={slotId === String(s.id) ? "selected" : ""}
-                      key={s.id}
-                    >
-                      <input
-                        type="radio"
-                        name="slot"
-                        value={s.id}
-                        checked={slotId === String(s.id)}
-                        onChange={() => setSlotId(String(s.id))}
-                        required
-                      />
-                      <span>
-                        <strong>
-                          {dateLabel(calendarDay(s.start_utc, slots.timezone), {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}{" "}
-                          · {clock(s.start_utc, slots.timezone)}
-                        </strong>
-                        <small>{s.display_name}</small>
-                      </span>
-                    </label>
-                  ))
-                ) : (
-                  <p>
-                    No available appointments in the next seven days. Choose
-                    another date.
-                  </p>
-                )}
-              </fieldset>
-            )
-          )}
-        </fieldset>
-        {slots && !slots.cache_fresh && (
-          <p className="appointment-note">
-            Availability was last updated earlier. Stride will recheck your
-            selected time before booking.
-          </p>
-        )}
-        {error && (
-          <p className="field-error" role="alert">
-            {error}
-          </p>
-        )}
-        <footer>
-          <button
-            className="secondary"
-            type="button"
-            disabled={saving}
-            onClick={canClose}
-          >
-            Cancel
-          </button>
-          <button
-            className="primary"
-            type="submit"
-            disabled={saving || loading || !slotId || !bookingEnabled}
-          >
-            {saving ? "Confirming in Stride…" : "Book appointment"}
-          </button>
-        </footer>
-      </form>
-    </ModalShell>
   );
 }

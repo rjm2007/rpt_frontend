@@ -98,13 +98,10 @@
 .schedule-open { position: absolute; left: 0; right: 0; background: var(--calendar-open); }
 .schedule-hour-cell.half { height: calc(var(--hour-height) / 2); }
 .schedule-hour-cell.half.hour { border-bottom-style: dashed; }
-.schedule-hour-cell.half .schedule-open-slot { inset: 3px; font-size: 16px; }
 .schedule-hour-cell.half .schedule-filtered { padding: 3px 8px; }
 .schedule-now { position: absolute; z-index: 3; left: 0; right: 0; height: 2px; margin-top: -1px; background: var(--calendar-now); pointer-events: none; }
 .schedule-now.with-dot::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--calendar-now); }
 .schedule-hour-cell { height: var(--hour-height); border-bottom: 1px solid var(--calendar-line); position: relative; }
-.schedule-open-slot { position: absolute; inset: 7px; border: 1px dashed var(--line); border-radius: 5px; color: var(--accent-ink); background: transparent; opacity: 0; font-size: 20px; }
-.schedule-hour-cell:hover .schedule-open-slot, .schedule-open-slot:focus-visible { opacity: 1; }
 .schedule-filtered { padding: 10px; display: block; color: var(--muted); font-size: 10px; }
 .schedule-booking-position { position: absolute; z-index: 2; min-width: 0; }
 .schedule-booking { --booking-edge: #168df6; --booking-fill: #e5f1ff; --booking-ink: #0a3a78; display: flex; flex-direction: column; justify-content: center; gap: 3px; width: 100%; height: 100%; min-width: 0; padding: 4px 8px; border: 1px solid transparent; border-left: 4px solid var(--booking-edge); border-radius: 4px; text-align: left; overflow: hidden; color: var(--booking-ink); background: var(--booking-fill); }
@@ -136,7 +133,6 @@
 .appointment-state { display: inline-block; border-radius: 4px; padding: 3px 7px; font-size: 11px; font-weight: 600; background: var(--soft-blue); color: var(--accent-ink); }
 .appointment-state.inactive { color: var(--muted); background: var(--paper-2); }
 .appointment-state.review { color: var(--warning-ink); background: #fff3d6; }
-.appointment-note { font-size: 12px; line-height: 1.6; color: var(--muted); }
 .calendar-source { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; padding-top: 14px; }
 .calendar-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 14px 18px; background: var(--soft-blue); color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 .calendar-empty { min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; color: var(--muted); }
@@ -164,18 +160,6 @@
 .schedule-list td small { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); }
 .schedule-list .selected { background: var(--soft-blue); }
 .schedule-list .link-button { font-size: 12px; text-align: left; }
-.appointment-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-.appointment-editor fieldset:disabled .select-menu { pointer-events: none; opacity: .6; }
-.appointment-editor .field-label { display: grid; gap: 7px; margin: 16px 0; font-size: 13px; font-weight: 600; }
-.appointment-editor .booking-context { display: grid; gap: 5px; padding: 14px; background: var(--surface); border-radius: 6px; font-size: 13px; }
-.appointment-editor .booking-context span { font-size: 12px; color: var(--muted); }
-.appointment-editor .appointment-slot-picker { margin-top: 22px; max-height: 270px; overflow-y: auto; }
-.appointment-slot-picker legend { padding: 0 0 9px; font-size: 13px; font-weight: 650; }
-.appointment-slot-picker label { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 7px; font-size: 13px; cursor: pointer; }
-.appointment-slot-picker label.selected { background: var(--soft-blue); border-color: var(--blue); }
-.appointment-slot-picker input { width: 16px; height: 16px; min-height: 0; accent-color: var(--blue); }
-.appointment-slot-picker small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
-.appointment-slot-picker > p { font-size: 13px; line-height: 1.6; }
 [data-theme='dark'] .appointments-workspace { --calendar-line: #263954; --calendar-closed: #0c1322; --calendar-open: #1a2742; --calendar-now: #ff5a52; }
 [data-theme='dark'] .legend-block { background: #173654; }
 [data-theme='dark'] .legend-block.follow_up { background: #163e37; }

@@ -1,21 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display.ts';
+import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display.ts';
 import type { ActivityEntry } from './dashboard-data';
 
-test('team activity shows staff changes across categories but never automated events', () => {
+test('activity shows every entry, staff and automated, and search narrows it', () => {
   const entry: ActivityEntry = { id: 'created', action: 'lead.created', occurred_at: '2026-10-02T12:00:00Z', actor_type: 'employee', actor_name: 'Test Staff', category: 'employee', title: 'Lead created', details: {} };
   const entries: ActivityEntry[] = [entry,
-    { ...entry, id: 'paused', action: 'lead.cadence', category: 'cadence', title: 'Cadence paused', details: { mode: 'paused' } },
-    { ...entry, id: 'message', category: 'messages', title: 'SMS requested' },
-    ...(['calls', 'messages', 'appointments', 'cadence', 'employee'] as const).map((category) => ({ ...entry, id: `auto-${category}`, category, actor_type: 'automation' as const, actor_name: 'Automation' })),
+    { ...entry, id: 'paused', action: 'cadence.pause', category: 'cadence', title: 'Cadence paused', details: { mode: 'paused' } },
+    { ...entry, id: 'sheet', action: 'sheet.restart_cadence', actor_type: 'automation', actor_name: 'Google Sheet', category: 'cadence', title: 'Restart cadence refused: restarted less than 10 minutes ago', details: { source: 'Google Sheet' } },
+    { ...entry, id: 'call', action: 'outreach.delivered', actor_type: 'automation', actor_name: 'Elliot', category: 'calls', title: 'Call: no answer' },
+    { ...entry, id: 'stride', action: 'lead.status_changed', actor_type: 'automation', actor_name: 'Stride', category: 'appointments', title: 'Booked' },
+    { ...entry, id: 'done', action: 'lead.status_changed', actor_type: 'automation', actor_name: 'System', category: 'cadence', title: 'Closed, no response', details: { reason: 'cadence finished with no response' } },
   ];
-  assert.deepEqual(teamActivity(entries).map((item) => item.id), ['created', 'paused', 'message']);
-  assert.deepEqual(teamActivity(entries, ' PAUSED ').map((item) => item.id), ['paused']);
-  assert.equal(teamActivity(entries, 'test staff').length, 3);
-  assert.deepEqual(teamActivity(entries, 'automation'), []);
-  assert.deepEqual(teamActivity([]), []);
-  assert.equal(entries.length, 8);
+  assert.deepEqual(leadActivity(entries).map((item) => item.id), ['created', 'paused', 'sheet', 'call', 'stride', 'done']);
+  assert.deepEqual(leadActivity(entries, ' PAUSED ').map((item) => item.id), ['paused']);
+  assert.deepEqual(leadActivity(entries, 'google sheet').map((item) => item.id), ['sheet']);
+  assert.deepEqual(leadActivity(entries, 'refused').map((item) => item.id), ['sheet']);
+  assert.deepEqual(leadActivity(entries, 'voice agent').map((item) => item.id), ['call']);
+  assert.deepEqual(leadActivity(entries, 'cadence finished').map((item) => item.id), ['done']);
+  assert.equal(leadActivity(entries, 'test staff').length, 2);
+  assert.deepEqual(leadActivity([]), []);
+});
+
+test('activity names the kind of source under who made it', () => {
+  const source = (actor_type: 'employee' | 'automation', actor_name: string) => activitySource({ actor_type, actor_name });
+  assert.equal(source('employee', 'Emma'), 'Team member');
+  assert.equal(source('automation', 'Google Sheet'), 'Google Sheet');
+  assert.equal(source('automation', 'Elliot'), 'Voice agent');
+  assert.equal(source('automation', 'Stride'), 'Scheduling');
+  assert.equal(source('automation', 'Patient'), 'Patient');
+  assert.equal(source('automation', 'System'), 'Automated');
+  assert.equal(source('automation', 'Automation'), 'Automated');
 });
 
 test('normalizes machine values without changing stored data', () => {
@@ -95,11 +110,11 @@ test('names a blocked number as the reason a new lead waits', () => {
   assert.match(operationalMessage('Number blocked: this number asked not to be contacted. Unblock it to start outreach.'), /^Number blocked/);
 });
 
-test('activity shows review flags and resolutions, also automated ones', () => {
+test('activity shows review flags and resolutions next to outreach', () => {
   const entries = [
     { id: 'f', action: 'review.flagged', occurred_at: '2026-10-21T16:00:00Z', actor_type: 'automation' as const, actor_name: 'Automation', category: 'review' as const, title: 'Flagged: Text not delivered', details: {} },
     { id: 'r', action: 'review.resolved', occurred_at: '2026-10-21T17:00:00Z', actor_type: 'employee' as const, actor_name: 'Emma', category: 'review' as const, title: 'Resolved by Emma: Continue with calls only.', details: {} },
     { id: 'o', action: 'outreach.delivered', occurred_at: '2026-10-21T15:00:00Z', actor_type: 'automation' as const, actor_name: 'Automation', category: 'messages' as const, title: 'SMS delivered', details: {} },
   ];
-  assert.deepEqual(teamActivity(entries).map((item) => item.id), ['f', 'r']);
+  assert.deepEqual(leadActivity(entries).map((item) => item.id), ['f', 'r', 'o']);
 });

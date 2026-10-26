@@ -51,12 +51,24 @@ export function statusTone(value: unknown): StatusTone {
 }
 
 export type ActivityKind = 'appointment' | 'link' | 'handoff' | 'call' | 'message' | 'created' | 'closed' | 'history';
-export function teamActivity(entries: ActivityEntry[], query = '') {
+// Every activity on the lead shows (owner, 2026-10-26: "make sure every activity gets noted, so it's
+// easy and accountable"): staff, Google Sheet, Elliot, Stride, the patient and the system. The
+// backend sends one line per event, newest first; only the search narrows it.
+export function leadActivity(entries: ActivityEntry[], query = '') {
   const search = query.trim().toLowerCase();
-  // Review flags and resolutions show too, also when the system raised or closed them (2026-10-22:
-  // staff could not see why a lead was flagged or who resolved it).
-  return entries.filter((entry) => (entry.actor_type === 'employee' || entry.category === 'review') &&
-    `${entry.title} ${entry.actor_name} ${entry.action} ${Object.values(entry.details).join(' ')}`.toLowerCase().includes(search));
+  return entries.filter((entry) =>
+    `${entry.title} ${entry.actor_name} ${activitySource(entry)} ${entry.action} ${Object.values(entry.details).join(' ')}`.toLowerCase().includes(search));
+}
+
+// The small label under who made it: what kind of source that is.
+export function activitySource(entry: Pick<ActivityEntry, 'actor_type' | 'actor_name'>) {
+  if (entry.actor_type === 'employee') return 'Team member';
+  const name = entry.actor_name.trim().toLowerCase();
+  if (name === 'google sheet') return 'Google Sheet';
+  if (name === 'elliot') return 'Voice agent';
+  if (name === 'stride') return 'Scheduling';
+  if (name === 'patient') return 'Patient';
+  return 'Automated';
 }
 
 export function activityKind(item: Record<string, unknown>): ActivityKind {

@@ -1001,13 +1001,22 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .theme-toggle:hover { border-color: var(--blue); color: var(--blue); }
 
 /* ---------- Outreach Assistant ---------- */
+/* Keep page content clear of the floating assistant button (24px offset + 56px button + gap):
+   the end of every page can scroll above it, and keyboard focus never lands under it. */
+.content { padding-bottom: 104px; }
+html { scroll-padding-bottom: 96px; }
+/* Two-column Review Queue: the side card ends left of the button (80px + 8px gap - 30px page padding). */
+@media (min-width: 981px) { .review-layout { margin-right: 58px; } }
+/* One column (980px and below): while scrolling, the choice buttons pass over the button, not under it.
+   The open assistant pop-up (z-index 32) and the top bar (35) still sit above them. */
+@media (max-width: 980px) { .review-options button { position: relative; z-index: 31; } }
 .assistant-fab { position: fixed; right: 24px; bottom: 24px; z-index: 30; width: 56px; height: 56px; border: 0; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; box-shadow: 0 10px 26px #0b50d055; transition: transform .16s, box-shadow .16s; }
 .assistant-fab:hover, .assistant-fab.is-open { transform: translateY(-1px); box-shadow: 0 14px 30px #0b50d06a; }
 .assistant-fab.is-armed { transform: scale(1.12); outline: 3px dashed #fff; outline-offset: 4px; }
 .assistant-fab b { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--orange); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; padding: 0 5px; border: 2px solid var(--paper); }
 .assistant-fab-hint { position: absolute; right: 66px; white-space: nowrap; background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 650; padding: 6px 10px; border-radius: 7px; }
 /* 196px = 92px bottom offset + 88px top bar + 16px gap: the popover always ends below the top bar (z-index 35). */
-.assistant-pop { position: fixed; right: 24px; bottom: 92px; z-index: 30; width: min(400px, calc(100vw - 32px)); height: min(600px, calc(100vh - 196px)); height: min(600px, calc(100dvh - 196px)); border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 24px 60px #10182840; overflow: hidden; display: grid; }
+.assistant-pop { position: fixed; right: 24px; bottom: 92px; z-index: 32; width: min(400px, calc(100vw - 32px)); height: min(600px, calc(100vh - 196px)); height: min(600px, calc(100dvh - 196px)); border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 24px 60px #10182840; overflow: hidden; display: grid; }
 [data-theme="dark"] .assistant-pop { box-shadow: 0 24px 60px #00000080; }
 @media (max-width: 520px) { .assistant-pop { right: 12px; width: min(400px, calc(100vw - 86px)); } } /* clear the 62px sidebar rail, like .toast */
 .assistant-chat { display: grid; grid-template-rows: auto auto 1fr auto auto; min-height: 0; height: 100%; }
@@ -1219,7 +1228,7 @@ button.assistant-logo:hover { box-shadow: 0 0 0 3px #0b50d033; }
 .review-reason { margin: 0; line-height: 1.5; }
 .review-proof > div { padding: 10px 0; }
 .review-options { display: grid; gap: 8px; }
-.review-options button { width: 100%; justify-content: center; }
+.review-options button { width: 100%; justify-content: center; height: auto; padding-block: 10px; line-height: 1.35; text-align: center; text-wrap: balance; }
 .review-dialog-body { padding: 22px 24px; }
 .resolve-summary { display: grid; gap: 6px; margin-bottom: 16px; }
 .resolve-dialog textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--paper); color: var(--ink); font: inherit; }

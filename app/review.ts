@@ -59,6 +59,11 @@ export function stageAfter(choice: ReviewChoice): 'closed' | 'cadence' | 'new' {
   return CLOSING.has(choice) ? 'closed' : 'cadence';
 }
 
+// Choice labels keep "Day 0" (any "Day N") on one line: a non-breaking space between the words.
+export function choiceLabel(label: string): string {
+  return label.replace(/\bDay (\d+)/g, 'Day\u00a0$1');
+}
+
 export const RESOLVED_MESSAGE: Record<ReviewChoice, string> = {
   use_new_name: 'New name saved. Outreach continues.',
   keep_old_name: 'Old name kept. Outreach continues.',

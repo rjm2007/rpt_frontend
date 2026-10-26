@@ -6,7 +6,7 @@ import { ModalShell } from './dashboard-controls';
 import { dashboardGet } from './dashboard-client';
 import type { Review, ReviewChoice, ReviewPreview } from './dashboard-data';
 import { CLINIC_TZ, CLINIC_TZ_LABEL } from './display';
-import { closedReviewMessage, RESOLVED_MESSAGE, resolveRefusal } from './review';
+import { choiceLabel, closedReviewMessage, RESOLVED_MESSAGE, resolveRefusal } from './review';
 
 type ResolveAction = (path: string, method: string, body?: unknown, successMessage?: string, onError?: (message: string) => void) => Promise<Record<string, unknown> | null>;
 
@@ -31,7 +31,7 @@ export function ReviewCard({ review, onChoose, busy = false, compact = false }: 
     {review.group === 'blocked' && <p className="muted">An admin can unblock the number on this lead’s page (continue or start over).</p>}
     {Boolean(review.also?.length) && <p className="muted">Also open: {review.also!.map((item) => item.title).join(', ')}. Reviews are resolved one at a time, oldest first; the lead stays paused until the last one.</p>}
     {onChoose && !compact && <div className="review-options">{review.options.map((option) =>
-      <button key={option.choice} type="button" className={option.choice === 'front_desk' ? 'secondary' : 'primary'} disabled={busy} onClick={() => onChoose(option.choice)}>{option.label}</button>)}</div>}
+      <button key={option.choice} type="button" className={option.choice === 'front_desk' ? 'secondary' : 'primary'} disabled={busy} onClick={() => onChoose(option.choice)}>{choiceLabel(option.label)}</button>)}</div>}
   </div>;
 }
 
@@ -72,7 +72,7 @@ export function ResolveDialog({ leadId, choice, action, onClose, onResolved }: {
       <footer><button className="primary" type="button" onClick={close}>Refresh page</button></footer></div>
   </ModalShell>;
   return <ModalShell className="resolve-dialog" labelId="resolve-title" onClose={onClose}>
-    <header><div><h2 id="resolve-title">{option?.label ?? 'Resolve review'}</h2><p>{preview ? preview.full_name : 'Loading…'}</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close">×</button></header>
+    <header><div><h2 id="resolve-title">{option ? choiceLabel(option.label) : 'Resolve review'}</h2><p>{preview ? preview.full_name : 'Loading…'}</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close">×</button></header>
     <form onSubmit={submit}>
       {failed ? <p className="field-error" role="alert">The review could not be loaded. Close this and try again.</p>
         : !preview ? <p className="muted">Checking what this will do…</p>

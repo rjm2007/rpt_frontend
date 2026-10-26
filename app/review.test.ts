@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, RESOLVED_MESSAGE, resolveRefusal, REVIEW_GROUPS, reviewOf, stageAfter } from './review.ts';
+import { choiceLabel, CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, RESOLVED_MESSAGE, resolveRefusal, REVIEW_GROUPS, reviewOf, stageAfter } from './review.ts';
 import type { Review } from './dashboard-data.ts';
 
 const textReview: Review = {
@@ -74,4 +74,9 @@ test('a refused choice is said in the pop-up', () => {
   assert.equal(resolveRefusal('The cadence was already restarted in the last 10 minutes. Try the restart again later.'),
     'Not saved: The cadence was already restarted in the last 10 minutes. Try the restart again later.');
   assert.equal(resolveRefusal(''), 'Not saved. Close this and try again.');
+});
+
+test('choice labels keep "Day 0" together on one line', () => {
+  assert.equal(choiceLabel('Use new date of birth & restart from Day 0'), 'Use new date of birth & restart from Day\u00a00');
+  assert.equal(choiceLabel('Front desk will handle it'), 'Front desk will handle it');
 });

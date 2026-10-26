@@ -925,13 +925,6 @@ export function AppointmentsPage({
           <p>Your clinic schedule, connected to Stride.</p>
         </div>
         <div className="page-tools">
-          <button
-            className="primary"
-            type="button"
-            onClick={() => setDraft({ day })}
-          >
-            <span aria-hidden="true">＋</span>New appointment
-          </button>
           <div
             className="calendar-mode"
             role="group"

@@ -314,7 +314,14 @@ function BookingBlock({
               ) : (
                 <em>WAITING</em>
               ))}
-            {mark.mark && <i className={mark.status}>{mark.mark}</i>}
+            {mark.mark &&
+              (tiny && mark.status === "no_show" ? (
+                <i className={mark.status} title="No show">
+                  NS
+                </i>
+              ) : (
+                <i className={mark.status}>{mark.mark}</i>
+              ))}
           </span>
         )}
       </span>
@@ -555,11 +562,11 @@ function CalendarLegend({
             ))}
             <li>
               <i className="legend-area open" aria-hidden="true" />
-              White: open in Stride
+              Open in Stride
             </li>
             <li>
               <i className="legend-area closed" aria-hidden="true" />
-              Grey: not open
+              Not open in Stride
             </li>
           </ul>
           <ul>

@@ -354,7 +354,6 @@ button:disabled { cursor: not-allowed; }
 .lead-card.is-blocked:hover { border-color: #ee8f84; }
 tr.row-blocked td:first-child { box-shadow: inset 4px 0 0 var(--error-ink); }
 .lead-card.is-dragging { opacity: .45; box-shadow: none; transform: none; }
-.lead-card.is-locked, .lead-card.is-locked:active { cursor: pointer; }
 .lead-card:hover, .lead-card.focused { border-color: var(--status); box-shadow: 0 4px 18px #0b4ce815; }
 .lead-card strong { font-size: 16px; letter-spacing: -.01em; }
 .location { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }

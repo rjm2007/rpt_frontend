@@ -6,7 +6,7 @@ A blueprint for recreating this dashboard's appointment calendar in another dash
 
 | File | Role |
 | --- | --- |
-| `app/appointments-page.tsx` | The whole UI: toolbar, 5 views, details panel, editor modal |
+| `app/appointments-page.tsx` | The whole UI: toolbar (Filters, Legend), 5 views, visit card, editor modal |
 | `app/appointment-data.ts` | Pure helpers: date math, record normalisation, conflict check |
 | `app/display.ts` | Timezone helpers (`CLINIC_TZ`, `clinicDateTimeValue`, `clinicWallTimeToIso`) |
 | `app/demo-data.ts` | Mock API: validation + conflict rules for `POST/PATCH appointments` |
@@ -27,7 +27,8 @@ A blueprint for recreating this dashboard's appointment calendar in another dash
 - **Filters:** case title and practitioner, plus a "Reset filters" link.
 - **Navigation:** Today, previous and next. The step is 1 day, 7 days or 1 month depending on the view.
 - **Occupancy bar:** `N appointments · X / Y slots booked · meter · Z% booked`.
-- **Details side panel:** the selected appointment, with "View case" and "Edit appointment". It is closable and stacks below the calendar on narrow screens.
+- **Visit card (2026-10-26, view only):** clicking a visit (Day, Week, Month, List) opens a small card beside it (a bottom sheet under 700px): status line (orange "Waiting for approval in Stride", or Stride's status), patient "Last, First" with date of birth, phone and email from the linked lead, visit type, day and time, clinic and clinician with role, booked by (Elliot with a link to the call / Google Sheet / Stride front desk), "Open lead" when linked, and "To approve or cancel, use Stride." for waiting visits. No other actions. Closes with ×, Escape or a click outside; nothing opens on load.
+- **Legend:** a top-bar pop-up with block colours, white/grey open time, the status marks and WAITING.
 - **Click an empty slot:** opens the create modal pre-filled with that day, hour and practitioner.
 - **Editor modal:** create or edit with lead, practitioner, case, datetime-local and duration (30 or 60 min). Server errors such as a conflict are shown inline.
 - **Dark mode** and **responsive** layout.
@@ -235,7 +236,7 @@ Each block is a `<button>` with `aria-pressed`, `aria-label` ("Name, Case, 9:00 
 
 ### Selecting an item
 
-`choose(item)` sets `selectedId`, re-opens the details panel and, below 1100px viewport width, scrolls the panel into view. It uses `behavior: 'auto'` when `prefers-reduced-motion` is set.
+`choose(item, anchor)` opens the visit card next to the clicked element (`VisitCard`, positioned beside it and kept on screen; CSS turns it into a bottom sheet on phones). Open slots follow the location filter (Locations view: each column's own clinic).
 
 ### Creating / editing
 

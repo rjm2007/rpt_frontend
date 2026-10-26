@@ -42,11 +42,14 @@ export const VISIT_KINDS: { value: VisitKind; label: string }[] = [
   { value: "follow_up", label: "Follow-up" },
   { value: "other", label: "Other" },
 ];
-// Cached open Stride times for one clinician on one calendar-local day ("YYYY-MM-DDTHH:MM").
+// Cached open Stride times for one clinician at one clinic on one calendar-local day
+// ("YYYY-MM-DDTHH:MM"). location / location_id: the clinic (backend 2026-10-26, phase 3).
 export type OpenSlotDay = {
   date: string;
   practitioner_id: string;
   practitioner_name: string;
+  location_id?: number;
+  location?: string;
   slots: { start_local: string; end_local: string }[];
 };
 // Who a booking belongs to. Elliot: our voice agent booked it on a call. Sheet lead: one
@@ -150,7 +153,7 @@ export function appointmentSummary(items: Appointment[]) {
     byCase: countBy(items, (a) => a.case_title),
   };
 }
-export type Practitioner = { id: string; name: string; location: string };
+export type Practitioner = { id: string; name: string; location: string; role?: string | null };
 export type CalendarData = {
   appointments: Appointment[];
   practitioners: Practitioner[];
@@ -286,13 +289,20 @@ function localMinutes(value: string, day: string) {
 }
 // Open time for the given clinicians on one day: the union of their cached open slots as
 // [start, end) minutes, merged where they touch or overlap. Nothing else counts as open.
+// With a location, only that clinic's slots (an entry without one, older backend, counts).
 export function openIntervals(
   openSlots: OpenSlotDay[] | undefined,
   day: string,
   practitionerIds: string[],
+  location?: string,
 ) {
   const spans = (openSlots ?? [])
-    .filter((d) => d.date === day && practitionerIds.includes(d.practitioner_id))
+    .filter(
+      (d) =>
+        d.date === day &&
+        practitionerIds.includes(d.practitioner_id) &&
+        (!location || !d.location || d.location === location),
+    )
     .flatMap((d) =>
       d.slots.map((s) => [
         localMinutes(s.start_local, day),
@@ -332,4 +342,66 @@ export function nowMinutes(day: string, timezone = CLINIC_TZ, now = new Date()) 
   const wall = calendarWallTime(now.toISOString(), timezone);
   if (wall.slice(0, 10) !== day) return null;
   return Number(wall.slice(11, 13)) * 60 + Number(wall.slice(14, 16));
+}
+
+// The visit card's status line: waiting for approval (orange), else Stride's own status.
+export function visitStatus(
+  item: Pick<Appointment, "approval" | "stride_status" | "state">,
+) {
+  if (item.approval === "waiting")
+    return { label: "Waiting for approval in Stride", tone: "waiting" };
+  const labels: Record<string, string> = {
+    confirmed: "Confirmed",
+    unmarked: "Not marked yet",
+    checked_in: "Checked in",
+    cancelled: "Cancelled",
+    late_cancel: "Late cancel",
+    no_show: "No show",
+  };
+  const status = item.stride_status ?? "";
+  const label = labels[status] ?? (status ? stateLabel(status) : stateLabel(item.state));
+  const off =
+    ["cancelled", "late_cancel", "no_show"].includes(status) ||
+    ["cancelled", "no_show"].includes(statusBucket(item.state));
+  const tone = off ? "off" : "ok";
+  return { label, tone };
+}
+// Who put the visit on the books, in the card's words (backend `source`, else the tag).
+export function bookedBySource(item: Pick<Appointment, "source" | "tag">) {
+  const source =
+    ({ elliot: "elliot", sheet: "sheet", stride: "stride" } as Record<string, string>)[
+      item.source
+    ] ??
+    ({ elliot: "elliot", sheet_lead: "sheet", stride_only: "stride" } as Record<string, string>)[
+      item.tag
+    ] ??
+    "sheet";
+  return {
+    source,
+    label: { elliot: "Elliot", sheet: "Google Sheet", stride: "Stride front desk" }[
+      source as "elliot" | "sheet" | "stride"
+    ],
+  };
+}
+// Calendar heading: full words, or the short form when the top bar is tight.
+export function periodLabels(view: CalendarView, day: string, days: string[]) {
+  const label = (d: string, options: Intl.DateTimeFormatOptions) =>
+    new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { ...options, timeZone: "UTC" });
+  if (view === "Month")
+    return {
+      long: label(day, { month: "long", year: "numeric" }),
+      short: label(day, { month: "short", year: "numeric" }),
+    };
+  if (view === "Week") {
+    const first = label(days[0], { month: "short", day: "numeric" });
+    const last = label(days[days.length - 1], { month: "short", day: "numeric" });
+    return {
+      long: `${first} – ${label(days[days.length - 1], { month: "short", day: "numeric", year: "numeric" })}`,
+      short: `${first} – ${last}`,
+    };
+  }
+  return {
+    long: label(day, { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
+    short: label(day, { weekday: "short", month: "short", day: "numeric" }),
+  };
 }

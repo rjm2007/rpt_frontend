@@ -17,7 +17,10 @@ import {
   workingHours,
   nowMinutes,
   openIntervals,
+  periodLabels,
+  bookedBySource,
   visitMark,
+  visitStatus,
   type Appointment,
   type OpenSlotDay,
 } from "./appointment-data.ts";
@@ -181,4 +184,44 @@ test("visits at the same time sit side by side", () => {
     layoutAppointments(items).map((e) => [e.item.id, e.lane, e.lanes]),
     [["a", 0, 3], ["b", 1, 3], ["c", 2, 3]],
   );
+});
+test("with a location only that clinic's open slots count; without one every clinic's", () => {
+  const at = (location: string, start: string, end: string): OpenSlotDay => ({
+    date: "2026-10-27", practitioner_id: "5980", practitioner_name: "Alice Ames", location,
+    slots: [{ start_local: `2026-10-27T${start}`, end_local: `2026-10-27T${end}` }],
+  });
+  const slots = [at("Laguna Niguel", "09:00", "10:00"), at("Dana Point", "09:00", "10:00"), at("Dana Point", "14:00", "15:00")];
+  assert.deepEqual(openIntervals(slots, "2026-10-27", ["5980"]), [[540, 600], [840, 900]]);
+  assert.deepEqual(openIntervals(slots, "2026-10-27", ["5980"], "Laguna Niguel"), [[540, 600]]);
+  assert.deepEqual(openIntervals(slots, "2026-10-27", ["5980"], "San Clemente"), []);
+  // An older backend sends no location: its slots still count.
+  const old = [{ ...at("x", "11:00", "12:00"), location: undefined }];
+  assert.deepEqual(openIntervals(old, "2026-10-27", ["5980"], "Laguna Niguel"), [[660, 720]]);
+});
+test("the visit card's status line: waiting first, then Stride's own words", () => {
+  assert.deepEqual(visitStatus({ approval: "waiting", stride_status: null, state: "scheduled" }),
+    { label: "Waiting for approval in Stride", tone: "waiting" });
+  assert.deepEqual(
+    ["confirmed", "unmarked", "checked_in", "cancelled", "late_cancel", "no_show"].map(
+      (s) => visitStatus({ approval: "in_stride", stride_status: s, state: "scheduled" }).label),
+    ["Confirmed", "Not marked yet", "Checked in", "Cancelled", "Late cancel", "No show"],
+  );
+  assert.equal(visitStatus({ approval: "in_stride", stride_status: "no_show", state: "no_show" }).tone, "off");
+  assert.equal(visitStatus({ approval: "in_stride", stride_status: "confirmed", state: "scheduled" }).tone, "ok");
+  // A word Stride adds later is shown, never hidden.
+  assert.equal(visitStatus({ approval: "in_stride", stride_status: "rescheduled", state: "rescheduled" }).label, "Rescheduled");
+});
+test("booked by: Elliot, Google Sheet or Stride front desk", () => {
+  assert.deepEqual(bookedBySource({ source: "elliot", tag: "elliot" }), { source: "elliot", label: "Elliot" });
+  assert.equal(bookedBySource({ source: "sheet", tag: "sheet_lead" }).label, "Google Sheet");
+  assert.equal(bookedBySource({ source: "stride", tag: "stride_only" }).label, "Stride front desk");
+  // Older backend: source was "Stride" / "Booking service"; the tag decides.
+  assert.equal(bookedBySource({ source: "Booking service", tag: "elliot" }).label, "Elliot");
+});
+test("the heading has a short form for a tight top bar", () => {
+  assert.deepEqual(periodLabels("Day", "2026-10-27", ["2026-10-27"]),
+    { long: "Tuesday, October 27, 2026", short: "Tue, Oct 27" });
+  const week = ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"];
+  assert.deepEqual(periodLabels("Week", "2026-10-27", week), { long: "Oct 26 – Nov 1, 2026", short: "Oct 26 – Nov 1" });
+  assert.deepEqual(periodLabels("Month", "2026-10-27", week), { long: "October 2026", short: "Oct 2026" });
 });

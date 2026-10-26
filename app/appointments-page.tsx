@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
+import {
+  CSSProperties,
+  FormEvent,
+  ReactNode,
+  RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { ModalShell, SelectMenu } from "./dashboard-controls";
 import { dashboardFetch } from "./dashboard-client";
-import {
-  sourceLabel,
-  clientErrorMessage,
-  CLINIC_TZ,
-  timezoneLabel,
-} from "./display";
-import type { Snapshot } from "./dashboard-data";
+import { clientErrorMessage, CLINIC_TZ, timezoneLabel } from "./display";
+import type { Lead, Snapshot } from "./dashboard-data";
 import {
   Appointment,
   CalendarData,
@@ -28,15 +32,16 @@ import {
   BOOKING_TAGS,
   STATUS_BUCKETS,
   appointmentSummary,
-  bookedByLabel,
-  callMoment,
+  bookedBySource,
   filterAppointments,
   stateLabel,
   tagLabel,
   VISIT_KINDS,
   nowMinutes,
   openIntervals,
+  periodLabels,
   visitMark,
+  visitStatus,
   type BookingTag,
   type StatusBucket,
 } from "./appointment-data";
@@ -85,11 +90,7 @@ const tone = (caseTitle: string) =>
           Array.from(caseTitle).reduce((sum, c) => sum + c.charCodeAt(0), 0) % 3
         ];
 
-function CalendarSymbol({
-  kind = "calendar",
-}: {
-  kind?: "calendar" | "list" | "clock" | "person" | "pin" | "case" | "link";
-}) {
+function CalendarSymbol({ kind = "calendar" }: { kind?: "calendar" | "list" }) {
   const paths = {
     calendar: (
       <>
@@ -101,37 +102,6 @@ function CalendarSymbol({
       <>
         <path d="M8 6h13M8 12h13M8 18h13" />
         <path d="M3 6h.1M3 12h.1M3 18h.1" />
-      </>
-    ),
-    clock: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7v5l3 2" />
-      </>
-    ),
-    person: (
-      <>
-        <circle cx="12" cy="7" r="3" />
-        <path d="M5 21v-3a7 7 0 0 1 14 0v3" />
-      </>
-    ),
-    pin: (
-      <>
-        <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
-        <circle cx="12" cy="10" r="2.5" />
-      </>
-    ),
-    case: (
-      <>
-        <path d="M6 3h8l4 4v14H6Z M14 3v5h4M9 12h6M9 16h6" />
-      </>
-    ),
-    link: (
-      <>
-        <path
-          d="m9 15 6-6M8 17l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 7l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"
-          transform="translate(1 -1)"
-        />
       </>
     ),
   };
@@ -180,16 +150,6 @@ function State({ item }: { item: Appointment }) {
 export function BookingTagChip({ tag }: { tag: BookingTag }) {
   return <span className={`booking-tag ${tag}`}>{tagLabel(tag)}</span>;
 }
-const bookedOn = (iso: string | null, timezone: string) =>
-  iso
-    ? new Date(iso).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: timezone,
-      })
-    : "";
 function Skeleton({ w = "100%", h = 14 }: { w?: string; h?: number }) {
   return (
     <span
@@ -300,13 +260,16 @@ function BookingBlock({
   selected,
   timezone,
   compact,
+  tiny,
   onChoose,
 }: {
   item: Appointment;
   selected: boolean;
   timezone: string;
   compact?: boolean;
-  onChoose: (a: Appointment) => void;
+  // A very narrow lane: WAITING becomes an orange "W" badge.
+  tiny?: boolean;
+  onChoose: (a: Appointment, anchor: HTMLElement) => void;
 }) {
   const mark = visitMark(item);
   const waiting = item.approval === "waiting";
@@ -317,21 +280,40 @@ function BookingBlock({
   return (
     <button
       type="button"
-      className={`schedule-booking ${kindTone[item.visit_kind ?? "other"] ?? ""} ${waiting ? "waiting" : ""} ${mark.status === "no_show" ? "no-show" : ""} ${selected ? "selected" : ""} ${compact ? "compact" : ""} ${mark.struck ? "inactive" : ""}`}
-      aria-pressed={selected}
-      aria-label={[name, visit, timeRange(item, timezone), said, `${source} booking`]
+      className={`schedule-booking ${kindTone[item.visit_kind ?? "other"] ?? ""} ${waiting ? "waiting" : ""} ${mark.status === "no_show" ? "no-show" : ""} ${selected ? "selected" : ""} ${compact ? "compact" : ""} ${tiny ? "tiny" : ""} ${mark.struck ? "inactive" : ""}`}
+      aria-haspopup="dialog"
+      aria-expanded={selected}
+      aria-label={[
+        name,
+        visit,
+        timeRange(item, timezone),
+        said,
+        `${source} booking`,
+      ]
         .filter(Boolean)
         .join(", ")}
-      title={[name, timeRange(item, timezone), visit, item.practitioner_name, said, source]
+      title={[
+        name,
+        timeRange(item, timezone),
+        visit,
+        item.practitioner_name,
+        said,
+        source,
+      ]
         .filter(Boolean)
         .join(" · ")}
-      onClick={() => onChoose(item)}
+      onClick={(e) => onChoose(item, e.currentTarget)}
     >
       <span className="booking-head">
         <strong>{name}</strong>
         {(waiting || mark.mark) && (
           <span className="schedule-booking-mark" aria-hidden="true">
-            {waiting && <em>WAITING</em>}
+            {waiting &&
+              (tiny ? (
+                <em title="Waiting for approval in Stride">W</em>
+              ) : (
+                <em>WAITING</em>
+              ))}
             {mark.mark && <i className={mark.status}>{mark.mark}</i>}
           </span>
         )}
@@ -343,6 +325,284 @@ function BookingBlock({
         </span>
       )}
     </button>
+  );
+}
+
+// Close a popover on Escape (focus back to its opener) or a press outside it and its opener.
+function useDismiss(
+  open: boolean,
+  box: RefObject<HTMLElement | null>,
+  opener: HTMLElement | null,
+  onClose: () => void,
+) {
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close.current();
+      opener?.focus();
+    };
+    const press = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!box.current?.contains(target) && !opener?.contains(target))
+        close.current();
+    };
+    document.addEventListener("keydown", key);
+    document.addEventListener("pointerdown", press);
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("pointerdown", press);
+    };
+  }, [open, box, opener]);
+}
+
+const birthday = (value: string | undefined) =>
+  value && /^\d{4}-\d{2}-\d{2}/.test(value)
+    ? dateLabel(value.slice(0, 10), {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "";
+
+// View only: what the visit is and who booked it. Approving, cancelling or moving a visit
+// happens in Stride. A popover next to the block; a bottom sheet on phones (CSS).
+function VisitCard({
+  item,
+  anchor,
+  lead,
+  timezone,
+  onClose,
+}: {
+  item: Appointment;
+  anchor: HTMLElement;
+  lead?: Lead;
+  timezone: string;
+  onClose: () => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useDismiss(true, box, anchor, onClose);
+  useLayoutEffect(() => {
+    box.current?.focus({ preventScroll: true });
+  }, []);
+  useLayoutEffect(() => {
+    // Beside the block (right, else left), kept inside the window below the top bar.
+    function place() {
+      const card = box.current;
+      if (!card) return;
+      if (!anchor.isConnected) return onClose();
+      if (window.matchMedia("(max-width: 700px)").matches) {
+        card.style.left = card.style.top = "";
+        return;
+      }
+      const r = anchor.getBoundingClientRect();
+      const gap = 8;
+      const roof =
+        (document.querySelector(".topbar")?.getBoundingClientRect().bottom ??
+          0) + gap;
+      const { offsetWidth: w, offsetHeight: h } = card;
+      let left = r.right + gap;
+      if (left + w > window.innerWidth - gap) left = r.left - gap - w;
+      if (left < gap) left = Math.max(gap, window.innerWidth - w - gap);
+      const top = Math.max(roof, Math.min(r.top, window.innerHeight - h - gap));
+      card.style.left = `${left}px`;
+      card.style.top = `${top}px`;
+    }
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchor, onClose]);
+  const status = visitStatus(item);
+  const by = bookedBySource(item);
+  const name = item.patient_name || item.full_name;
+  const role = item.clinician?.role;
+  const born = birthday(lead?.date_of_birth);
+  const contact = [lead?.phone, lead?.email].filter(Boolean).join(" · ");
+  const rows: [string, ReactNode][] = [
+    ["Visit", item.visit_type || item.type],
+    [
+      "When",
+      [
+        dateLabel(calendarDay(item.start_utc, timezone), {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        }),
+        `${timeRange(item, timezone)} ${calendarZoneLabel(timezone)}`,
+        item.duration_minutes ? `${item.duration_minutes} min` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    ],
+    [
+      "Where",
+      [item.location, [item.practitioner_name, role].filter(Boolean).join(", ")]
+        .filter(Boolean)
+        .join(" · "),
+    ],
+    [
+      "Booked by",
+      <>
+        {by.label}
+        {by.source === "elliot" &&
+          item.lead_id &&
+          item.call_log_id !== null && (
+            <>
+              {" · "}
+              <Link
+                href={`/leads/${item.lead_id}/conversations/calls?call=${item.call_log_id}`}
+              >
+                Open the call
+              </Link>
+            </>
+          )}
+      </>,
+    ],
+  ];
+  return (
+    <div
+      className="visit-card"
+      ref={box}
+      role="dialog"
+      aria-labelledby="visit-card-name"
+      tabIndex={-1}
+    >
+      <header>
+        <p className={`visit-card-status ${status.tone}`}>{status.label}</p>
+        <button
+          className="visit-card-close"
+          type="button"
+          aria-label="Close"
+          onClick={() => {
+            onClose();
+            anchor.focus();
+          }}
+        >
+          ×
+        </button>
+      </header>
+      <h3 id="visit-card-name">{name}</h3>
+      {born && <p className="visit-card-sub">Born {born}</p>}
+      {contact && <p className="visit-card-sub">{contact}</p>}
+      <dl>
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {item.approval === "waiting" && (
+        <p className="visit-card-note">To approve or cancel, use Stride.</p>
+      )}
+      {item.lead_id && (
+        <Link
+          className="secondary visit-card-lead"
+          href={`/leads/${item.lead_id}`}
+        >
+          Open lead
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// What the calendar's colours and marks mean.
+function CalendarLegend({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [opener, setOpener] = useState<HTMLButtonElement | null>(null);
+  useDismiss(open, box, opener, () => onOpenChange(false));
+  return (
+    <div className="calendar-legend-wrap">
+      <button
+        ref={setOpener}
+        className={`secondary schedule-filters-button ${open ? "selected" : ""}`}
+        type="button"
+        aria-expanded={open}
+        aria-controls="calendar-legend"
+        onClick={() => onOpenChange(!open)}
+      >
+        Legend
+      </button>
+      {open && (
+        <div
+          className="calendar-legend"
+          id="calendar-legend"
+          ref={box}
+          role="group"
+          aria-label="Legend"
+        >
+          <ul>
+            {VISIT_KINDS.map((k) => (
+              <li key={k.value}>
+                <i className={`legend-block ${k.value}`} aria-hidden="true" />
+                {k.label}
+              </li>
+            ))}
+            <li>
+              <i className="legend-area open" aria-hidden="true" />
+              White: open in Stride
+            </li>
+            <li>
+              <i className="legend-area closed" aria-hidden="true" />
+              Grey: not open
+            </li>
+          </ul>
+          <ul>
+            <li>
+              <b className="legend-mark ok" aria-hidden="true">
+                ✓
+              </b>
+              Confirmed
+            </li>
+            <li>
+              <b className="legend-mark" aria-hidden="true">
+                ○
+              </b>
+              Not marked yet
+            </li>
+            <li>
+              <b className="legend-mark ok" aria-hidden="true">
+                ●
+              </b>
+              Checked in
+            </li>
+            <li>
+              <b className="legend-mark off" aria-hidden="true">
+                No show
+              </b>
+              Did not come
+            </li>
+            <li>
+              <b className="legend-mark faded" aria-hidden="true">
+                Name
+              </b>
+              Faded: cancelled or late cancel
+            </li>
+            <li>
+              <em className="legend-waiting" aria-hidden="true">
+                WAITING
+              </em>
+              Waiting for approval in Stride
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -374,8 +634,11 @@ export function AppointmentsPage({
   const [calendarLocation, setCalendarLocation] = useState("");
   const [status, setStatus] = useState<StatusBucket | "all">("all");
   const [tag, setTag] = useState<BookingTag | "all">("all");
-  const [selectedId, setSelectedId] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  // The visit card: which visit, and the block (or list button) it sits next to.
+  const [card, setCard] = useState<{ id: string; anchor: HTMLElement } | null>(
+    null,
+  );
+  const [legendOpen, setLegendOpen] = useState(false);
   const [loaded, setLoaded] = useState<{
     key: string;
     data: CalendarData;
@@ -389,7 +652,6 @@ export function AppointmentsPage({
     day: string;
     practitioner?: string;
   } | null>(null);
-  const details = useRef<HTMLElement>(null);
   // The filters panel remembers open/closed per staff member in this browser.
   const panelKey = `rpt-calendar-filters:${userId}`;
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -521,7 +783,11 @@ export function AppointmentsPage({
     status !== "all" ||
     tag !== "all" ||
     Boolean(calendarLocation && calendarLocation !== location);
-  const selected = visible.find((a) => a.id === selectedId) ?? visible[0];
+  // Never opened by itself: only a click on a visit opens its card.
+  const selected = card ? visible.find((a) => a.id === card.id) : undefined;
+  const closeCard = () => setCard(null);
+  // Only this clinic's open time under a location filter (Locations view: each column's own).
+  const openPlace = place === "All Locations" ? undefined : place;
   const practitionerIds = [...new Set(practitioners.map((p) => p.id))];
   const capacity = data
     ? practitionerIds.length *
@@ -557,12 +823,15 @@ export function AppointmentsPage({
             ]),
           ).values(),
         ];
-  // A clinician's role (credentials) comes with their visits; the practitioner list has none.
-  const roles = new Map(
-    (data?.appointments ?? [])
+  // A clinician's role (credentials): the practitioner list's, else their visits'.
+  const roles = new Map([
+    ...(data?.appointments ?? [])
       .filter((a) => a.clinician?.role)
-      .map((a) => [a.practitioner_id, a.clinician!.role!]),
-  );
+      .map((a) => [a.practitioner_id, a.clinician!.role!] as const),
+    ...(data?.practitioners ?? [])
+      .filter((p) => p.role)
+      .map((p) => [p.id, p.role!] as const),
+  ]);
   const columns =
     view === "Week"
       ? days.map((d) => ({
@@ -576,23 +845,30 @@ export function AppointmentsPage({
           practitioner: undefined,
           records: matching.filter((a) => dayOf(a) === d),
           // White = open in Stride for any practitioner shown, grey = not open.
-          open: openIntervals(data?.open_slots, d, practitionerIds),
+          open: openIntervals(data?.open_slots, d, practitionerIds, openPlace),
         }))
       : dayResources.map((p) => ({
           key: `${p.id}:${p.location}`,
           day,
           title: view === "Locations" ? p.location : p.name,
-          subtitle:
-            view === "Locations"
-              ? p.name
-              : [roles.get(p.id), p.location].filter(Boolean).join(" · "),
+          subtitle: (view === "Locations"
+            ? [p.name, roles.get(p.id)]
+            : [roles.get(p.id), p.location]
+          )
+            .filter(Boolean)
+            .join(" · "),
           practitioner: p.id,
           records: visible.filter(
             (a) =>
               a.practitioner_id === p.id &&
               (view !== "Locations" || a.location === p.location),
           ),
-          open: openIntervals(data?.open_slots, day, [p.id]),
+          open: openIntervals(
+            data?.open_slots,
+            day,
+            [p.id],
+            view === "Locations" ? p.location : openPlace,
+          ),
         }));
   // Rows from 9 AM to 5 PM at least, stretched to every visit and open slot shown.
   const opens = columns.flatMap((c) => c.open);
@@ -619,33 +895,16 @@ export function AppointmentsPage({
   const toY = (minutes: number) =>
     ((minutes - hourStart * 60) / 60) * HOUR_HEIGHT;
 
-  function choose(a: Appointment) {
-    setSelectedId(a.id);
-    setDetailsOpen(true);
-    if (window.innerWidth < 1100)
-      window.setTimeout(
-        () =>
-          details.current?.scrollIntoView({
-            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-              .matches
-              ? "auto"
-              : "smooth",
-            block: "nearest",
-          }),
-        0,
-      );
+  function choose(a: Appointment, anchor: HTMLElement) {
+    setCard({ id: a.id, anchor });
   }
-  function drill(a: Appointment) {
-    setChosenDay(dayOf(a));
-    setView("Day");
-    choose(a);
-  }
-  const periodLabel =
-    view === "Month"
-      ? dateLabel(day, { month: "long", year: "numeric" })
-      : view === "Week"
-        ? `${dateLabel(days[0], { month: "short", day: "numeric" })} – ${dateLabel(days[6], { month: "short", day: "numeric", year: "numeric" })}`
-        : dateLabel(day);
+  const periodLabel = periodLabels(view, day, days);
+  // The now line's dot: once per day, on that day's first column.
+  const firstColumnOfDay = new Set(
+    columns
+      .filter((c, i) => columns.findIndex((o) => o.day === c.day) === i)
+      .map((c) => c.key),
+  );
 
   return (
     <div className="appointments-workspace">
@@ -716,7 +975,12 @@ export function AppointmentsPage({
             >
               Today
             </button>
-            <h2>{periodLabel}</h2>
+            <h2 aria-label={periodLabel.long}>
+              <span className="period-long">{periodLabel.long}</span>
+              <span className="period-short" aria-hidden="true">
+                {periodLabel.short}
+              </span>
+            </h2>
             <span className="schedule-zone">{calendarZoneLabel(timezone)}</span>
           </div>
           <div
@@ -736,15 +1000,24 @@ export function AppointmentsPage({
               </button>
             ))}
           </div>
-          <button
-            className={`secondary schedule-filters-button ${filtersOpen ? "selected" : ""}`}
-            type="button"
-            aria-expanded={filtersOpen}
-            aria-controls="calendar-filters"
-            onClick={toggleFilters}
-          >
-            Filters{filtered ? " •" : ""}
-          </button>
+          <div className="schedule-tools">
+            <button
+              className={`secondary schedule-filters-button ${filtersOpen ? "selected" : ""}`}
+              type="button"
+              aria-expanded={filtersOpen}
+              aria-controls="calendar-filters"
+              onClick={toggleFilters}
+            >
+              Filters
+              {filtered && (
+                <>
+                  <span aria-hidden="true"> •</span>
+                  <span className="sr-only"> (filters on)</span>
+                </>
+              )}
+            </button>
+            <CalendarLegend open={legendOpen} onOpenChange={setLegendOpen} />
+          </div>
         </div>
         {error && (
           <div className="calendar-notice" role="alert">
@@ -767,9 +1040,7 @@ export function AppointmentsPage({
             period to see every record.
           </p>
         )}
-        <div
-          className={`schedule-layout ${filtersOpen ? "with-filters" : ""} ${selected && detailsOpen ? "with-details" : ""}`}
-        >
+        <div className={`schedule-layout ${filtersOpen ? "with-filters" : ""}`}>
           {filtersOpen && (
             <aside
               className="calendar-filters"
@@ -820,7 +1091,9 @@ export function AppointmentsPage({
                     {p.name}
                   </label>
                 ))}
-                {!practitionerOptions.length && <small>None in this location</small>}
+                {!practitionerOptions.length && (
+                  <small>None in this location</small>
+                )}
                 {!picked.length && practitionerOptions.length > 0 && (
                   <small>None ticked: everyone shows</small>
                 )}
@@ -872,15 +1145,6 @@ export function AppointmentsPage({
                   Reset filters
                 </button>
               )}
-              <div className="calendar-legend" aria-label="Colour key">
-                {VISIT_KINDS.map((k) => (
-                  <span key={k.value} className={`legend-${k.value}`}>
-                    {k.label}
-                  </span>
-                ))}
-                <span className="legend-waiting">Waiting for Stride</span>
-                <span>✓ confirmed · ○ unmarked · ● checked in</span>
-              </div>
             </aside>
           )}
           <div className="schedule-main">
@@ -998,7 +1262,8 @@ export function AppointmentsPage({
                           <button
                             className="link-button"
                             type="button"
-                            onClick={() => choose(a)}
+                            aria-haspopup="dialog"
+                            onClick={(e) => choose(a, e.currentTarget)}
                           >
                             {a.full_name}
                           </button>
@@ -1055,8 +1320,9 @@ export function AppointmentsPage({
                           <button
                             key={a.id}
                             type="button"
-                            className={`month-booking ${tone(a.case_title)}`}
-                            onClick={() => drill(a)}
+                            className={`month-booking ${tone(a.case_title)} ${a.id === selected?.id ? "selected" : ""}`}
+                            aria-haspopup="dialog"
+                            onClick={(e) => choose(a, e.currentTarget)}
                             title={`${a.full_name} · ${timeRange(a, timezone)} · ${stateLabel(a.state)} · ${tagLabel(a.tag)}`}
                           >
                             <time>{clock(a.start_utc, timezone)}</time>
@@ -1222,11 +1488,15 @@ export function AppointmentsPage({
                                 overlaps(a),
                             );
                             return (
-                              <div className={`schedule-hour-cell half ${m % 60 ? "" : "hour"}`} key={m}>
+                              <div
+                                className={`schedule-hour-cell half ${m % 60 ? "" : "hour"}`}
+                                key={m}
+                              >
                                 {!occupied && data.booking_enabled && (
                                   <button
                                     className="schedule-open-slot"
                                     type="button"
+                                    tabIndex={-1}
                                     aria-label={`Find availability for ${c.title} on ${dateLabel(c.day)}`}
                                     onClick={() =>
                                       setDraft({
@@ -1252,7 +1522,7 @@ export function AppointmentsPage({
                               now >= hourStart * 60 &&
                               now <= hourEnd * 60 ? (
                               <span
-                                className="schedule-now"
+                                className={`schedule-now ${firstColumnOfDay.has(c.key) ? "with-dot" : ""}`}
                                 style={{ top: toY(now) }}
                                 aria-hidden="true"
                               />
@@ -1283,6 +1553,7 @@ export function AppointmentsPage({
                                     view === "Week" ||
                                     (a.duration_minutes ?? 30) < 50
                                   }
+                                  tiny={lanes > (view === "Week" ? 1 : 2)}
                                   onChoose={choose}
                                 />
                               </div>
@@ -1296,121 +1567,6 @@ export function AppointmentsPage({
               </div>
             )}
           </div>
-          {selected && detailsOpen && (
-            <aside
-              className="appointment-details"
-              ref={details}
-              aria-label="Appointment details"
-            >
-              <header>
-                <h3>Appointment details</h3>
-                <button
-                  className="calendar-icon-button"
-                  type="button"
-                  aria-label="Close appointment details"
-                  onClick={() => setDetailsOpen(false)}
-                >
-                  ×
-                </button>
-              </header>
-              <div className="appointment-details-body">
-                <h2>{selected.full_name}</h2>
-                <div className="appointment-detail-tags">
-                  <State item={selected} />
-                  <BookingTagChip tag={selected.tag} />
-                </div>
-                <div className="appointment-detail-group">
-                  <p>
-                    <CalendarSymbol />
-                    <span>
-                      {dateLabel(calendarDay(selected.start_utc, timezone))}
-                    </span>
-                  </p>
-                  <p>
-                    <CalendarSymbol kind="clock" />
-                    <span>
-                      {timeRange(selected, timezone)}{" "}
-                      {calendarZoneLabel(timezone)}
-                      <small>
-                        {selected.duration_minutes
-                          ? `${selected.duration_minutes} minutes`
-                          : "Duration unavailable"}
-                      </small>
-                    </span>
-                  </p>
-                </div>
-                <div className="appointment-detail-group">
-                  {[
-                    ["calendar", selected.type, "Visit"],
-                    ["case", selected.case_title, "Case"],
-                    ["person", selected.practitioner_name, "Clinician"],
-                    ["pin", selected.location, "Location"],
-                  ].map(([kind, text, label]) => (
-                    <p key={kind}>
-                      <CalendarSymbol
-                        kind={kind as "calendar" | "person" | "pin" | "case"}
-                      />
-                      <span>
-                        {text}
-                        <small>{label}</small>
-                      </span>
-                    </p>
-                  ))}
-                </div>
-                <div className="appointment-detail-group">
-                  <p>
-                    <CalendarSymbol kind="clock" />
-                    <span>
-                      {[
-                        bookedOn(selected.booked_at, timezone),
-                        bookedByLabel(selected.booked_by),
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      <small>Booked</small>
-                    </span>
-                  </p>
-                  <p>
-                    <CalendarSymbol kind="link" />
-                    <span>
-                      {selected.lead_source
-                        ? sourceLabel(selected.lead_source)
-                        : "Not one of our Sheet leads"}
-                      <small>Lead source</small>
-                    </span>
-                  </p>
-                </div>
-                {selected.lead_id && selected.call_log_id !== null && (
-                  <Link
-                    className="secondary full calendar-case-link"
-                    href={`/leads/${selected.lead_id}/conversations/calls?call=${selected.call_log_id}`}
-                  >
-                    View call transcript
-                    {selected.call_offset_seconds !== null
-                      ? ` · booked at ${callMoment(selected.call_offset_seconds)}`
-                      : ""}
-                  </Link>
-                )}
-                {selected.lead_id ? (
-                  <Link
-                    className="secondary full calendar-case-link"
-                    href={`/leads/${selected.lead_id}`}
-                  >
-                    Open lead <span aria-hidden="true">↗</span>
-                  </Link>
-                ) : (
-                  <p className="appointment-note">
-                    Not one of our Sheet leads. Stride-only patients never
-                    appear on the lead board.
-                  </p>
-                )}
-                <p className="appointment-note">
-                  Stride is the record: reschedule or cancel there. The next
-                  import updates this calendar.
-                </p>
-              </div>
-            </aside>
-          )}
         </div>
       </section>
       <footer className="calendar-source">
@@ -1422,6 +1578,16 @@ export function AppointmentsPage({
           {loading && data ? " · Refreshing…" : ""}
         </span>
       </footer>
+      {selected && card && (
+        <VisitCard
+          key={selected.id}
+          item={selected}
+          anchor={card.anchor}
+          lead={snapshot.leads.find((l) => l.id === selected.lead_id)}
+          timezone={timezone}
+          onClose={closeCard}
+        />
+      )}
       {draft && (
         <AppointmentEditor
           draft={draft}
@@ -1430,14 +1596,12 @@ export function AppointmentsPage({
           bookingEnabled={data?.booking_enabled ?? false}
           action={action}
           onClose={() => setDraft(null)}
-          onSaved={(d, id) => {
+          onSaved={(d) => {
             setChosenDay(d);
-            if (id) setSelectedId(id);
             setCaseTitle("all");
             setPicked([]);
             setStatus("all");
             setTag("all");
-            setDetailsOpen(true);
             setReload((n) => n + 1);
             setDraft(null);
           }}

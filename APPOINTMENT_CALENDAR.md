@@ -3,7 +3,7 @@
 The global Appointments page and each lead's Appointments tab implement the local `calendar.md`
 guide with real backend data. The calendar uses the clinic timezone returned by the API, UTC
 appointment instants and their actual durations. It provides Day, Week, Month, Locations, Capacity,
-list mode, filters, date navigation and a details panel. Imports that overlap are drawn in lanes.
+list mode, filters, a Legend pop-up, date navigation and a view-only visit card (click a visit; a bottom sheet on phones). Imports that overlap are drawn in lanes.
 Practitioners and case labels come from connected records/configuration, rather than demo lists.
 
 ## Data and booking flow

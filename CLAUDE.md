@@ -10,7 +10,7 @@ Deployed on Vercel at `rpt-frontend-gamma.vercel.app` (repo `rjm2007/rpt_fronten
 Next build). `npm run build` produces a Vinext/Vite bundle for Cloudflare Workers / OpenAI Sites instead.
 
 Moving (branch `feature/own-postgres`, see `../DB-Move-Runbook.md`): `Dockerfile` (native Next build,
-`output: 'standalone'`) runs on the demo EC2 as service `dashboard` at `https://dashboard.demo.aibolt.ai`, env in
+`output: 'standalone'`) runs on the demo EC2 as service `dashboard` at `https://demo.aibolt.ai/` (Caddy: `/api/v1/*`, `/health`, `/ready` → backend, `/mock-stride*` → Mock Stride, the rest here), env in
 `dashboard.env` there; it calls the backend at `http://api:8000` inside Docker (`app/dashboard-origin.ts`, same as
 production). Vercel stays for a week after the move, then is retired.
 

@@ -1279,3 +1279,40 @@ button.assistant-logo:hover { box-shadow: 0 0 0 3px #0b50d033; }
 .resolve-summary { display: grid; gap: 6px; margin-bottom: 16px; }
 .resolve-dialog textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--paper); color: var(--ink); font: inherit; }
 .status-pill.texts-off { --status: var(--ink-2); --wash: var(--paper); }
+
+/* Leads page paging (2026-10-28): one Filters button with a panel, chips, page footer; board columns scroll on their own. */
+.filter-menu { position: relative; }
+.filter-button { height: 44px; }
+.filter-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 12px; display: inline-grid; place-items: center; }
+.filter-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: min(300px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 16px 40px #00133b2e; }
+.filter-panel fieldset { border: 0; margin: 0 0 14px; padding: 0; }
+.filter-panel legend { margin-bottom: 6px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.filter-panel label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; color: var(--ink-2); }
+.filter-panel label small { margin-left: auto; color: var(--muted); }
+.filter-panel .filter-control { width: 100%; }
+.filter-panel footer { display: flex; justify-content: space-between; gap: 8px; }
+.filter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -12px 0 18px; }
+.filter-chip { border: 1px solid var(--line); border-radius: 999px; background: var(--soft-blue); padding: 5px 12px; color: var(--ink-2); font-size: 13px; }
+.filter-chip span { margin-left: 4px; font-weight: 700; }
+.clear-filters { border: 0; background: none; padding: 0; color: var(--blue); font-size: 13px; font-weight: 650; }
+tr.row-clickable { cursor: pointer; }
+.row-name { display: block; border: 0; background: none; padding: 0; color: var(--ink); font: inherit; font-weight: 650; text-align: left; }
+.row-name + small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+td.nowrap { white-space: nowrap; }
+.status-pill.plain { --status: var(--ink-2); --wash: var(--paper-2); }
+.list-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 14px; }
+.list-footer label, .list-pages, .list-loaded { display: flex; align-items: center; gap: 10px; }
+.list-footer .page-size { min-width: 84px; height: 38px; }
+.stride-dialog { width: min(760px, calc(100% - 32px)); }
+.stride-dialog-body { padding: 20px 24px 24px; }
+.stride-dialog-body h3 { margin: 0 0 8px; font-size: 16px; }
+.stride-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 20px; }
+.stride-facts dt { color: var(--muted); font-size: 12px; }
+.stride-facts dd { margin: 2px 0 0; font-weight: 600; }
+.pipeline.paged .pipeline-column { height: calc(100svh - 320px); min-height: 420px; display: flex; flex-direction: column; }
+/* position: the cards' sr-only text is absolute; without it, it escaped the scroll box and grew the page. */
+.pipeline.paged .lead-stack { position: relative; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.pipeline.paged .lead-stack > * { flex-shrink: 0; }
+.column-note { margin: 0; text-align: center; color: var(--muted); font-size: 12px; }
+.column-footer { padding: 8px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+@media (max-width: 760px) { .pipeline.paged .pipeline-column { height: 70svh; min-height: 0; } }

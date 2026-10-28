@@ -27,7 +27,7 @@ npm ci
 npm run dev            # vinext dev server, backend must be running
 npm run lint
 npm run typecheck
-npm run test:display && npm run test:cadence && npm run test:auth && npm run test:dashboard
+npm run test:display && npm run test:cadence && npm run test:auth && npm run test:dashboard && npm run test:leads
 npm run build:vercel   # what Vercel builds
 ```
 

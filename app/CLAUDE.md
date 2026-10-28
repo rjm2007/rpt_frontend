@@ -6,9 +6,10 @@ picks the page from the URL on the client.
 
 | File | Purpose |
 | --- | --- |
-| `dashboard-shell.tsx` (~1400 lines) | The whole UI. `DashboardShell` (layout, nav, data loading via `/api/dashboard/snapshot`, actions) and every page component: Home, Leads (list + Kanban board with drag-and-drop stage moves), Appointments, Review queue, Analytics, Administration (cadence studio, SMS templates), and the lead workspace (overview, SMS, calls, cadence runs with reschedule, appointments, activity). |
+| `dashboard-shell.tsx` (~1400 lines) | The whole UI. `DashboardShell` (layout, nav, data loading via `/api/dashboard/snapshot`, actions) and every page component: Home, Leads (paged list with a Filters panel and a read-only Stride patient view + Kanban board with drag-and-drop stage moves, 25 cards per column and per-column scroll), Appointments, Review queue, Analytics, Administration (cadence studio, SMS templates), and the lead workspace (overview, SMS, calls, cadence runs with reschedule, appointments, activity). |
 | `review.ts`, `review-panel.tsx` | Needs Review: group filter and wording (tested in `review.test.ts`); `ReviewCard` (reason, proof, choices) and `ResolveDialog` (confirm pop-up from `GET review/{id}`, optional note). A flagged lead shows Resolve review instead of Resume. Demo also has the Appointment (restart / text booking link) and Booking (front desk only) groups. 2026-10-25: restart-from-Day-0 choices on name / details / text / call / technical / other cards, a Details changed group (location, case, date of birth), and a refused choice (e.g. 10-minute restart cooldown) is shown in the pop-up (`resolveRefusal`). Needs the backend with migration 048 (the old free-text resolve returns 422). |
 | `dashboard-data.ts` | TypeScript types for backend responses (`Lead`, `LeadDetail`, `Snapshot`, `CadenceVersion`, `ActivityEntry`, …) and `emptySnapshot`. Keep in sync with `routes/dashboard.py` in the backend. |
+| `lead-list.ts` | Leads page paging (2026-10-28): `lead-list` / `lead-board` URLs, filter count, pages over the loaded rows, column scroll trigger (tested in `lead-list.test.ts`). The list loads 500 at a time (Load 500 more), the board 25 per column; search and filters run in the backend over every lead. |
 | `dashboard-client.ts` | `dashboardFetch()` wrapper for calls to the proxy (handles session expiry). |
 | `display.ts` | Formatting: clinic timezone (America/Los_Angeles), enum labels, status tones, activity descriptions, operational error messages. |
 | `cadence.ts` | Cadence helpers: split events into runs, step names, run summaries, call naming, step reordering. |
@@ -22,13 +23,13 @@ picks the page from the URL on the client.
 
 ## URL → page
 
-`/` home · `/leads` (list/board, `?stage=` filter) · `/leads/{id}` and its tabs (conversations/sms,
+`/` home · `/leads` (list/board, `?stage=` filter, `?search=`; data from `lead-list` / `lead-board`, not the snapshot) · `/leads/{id}` and its tabs (conversations/sms,
 conversations/calls, cadence, appointments, activity) · `/appointments` · `/review` · `/analytics` ·
 `/administration`, `/administration/cadence`, `/administration/templates` · `/assistant`
 
 ## Notes
 
-- The board column comes from the backend's `lead.stage`; the frontend does not compute stages.
+- The board column comes from the backend's `lead.stage`; the frontend does not compute stages. The snapshot's `leads` is only the newest 250 plus open reviews; its `counts` / `counts_by_location` are real totals.
 - Booked is final (owner, 2026-10-26): Booked cards never start a board move (`canMoveOnBoard` in `display.ts`, tooltip
   `BOOKED_LOCKED_HINT`; columns accept only a board drag); they can still be dragged to the Outreach Assistant dock; the backend refuses the move too (409), and `clientErrorMessage` shows that detail as is.
   The only way out is the visit cancelled in Stride (the lead comes back for review).

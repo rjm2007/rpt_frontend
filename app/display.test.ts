@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display.ts';
+import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel, formatPhone, leadSourceLabel } from './display.ts';
 import type { ActivityEntry } from './dashboard-data';
 
 test('activity shows every entry, staff and automated, and search narrows it', () => {
@@ -129,3 +129,16 @@ test('booked is final: booked cards cannot be moved on the board, the refusal te
   assert.notEqual(clientErrorMessage('Stride HTTP 500', 'fallback'), 'Stride HTTP 500');
 });
 
+
+test('lead source label keeps where the row started', () => {
+  assert.equal(leadSourceLabel('google_sheets'), 'Google Sheet');
+  assert.equal(leadSourceLabel('stride'), 'Stride');
+  assert.equal(leadSourceLabel('manual'), 'Manual');
+});
+
+test('phone numbers show in full, formatted', () => {
+  assert.equal(formatPhone('+15550001234'), '(555) 000-1234');
+  assert.equal(formatPhone('5550001234'), '(555) 000-1234');
+  assert.equal(formatPhone('+445550001234'), '+445550001234');
+  assert.equal(formatPhone(null), '—');
+});

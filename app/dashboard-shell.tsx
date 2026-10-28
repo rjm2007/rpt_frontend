@@ -5,11 +5,12 @@ import { ModalShell, SelectMenu } from './dashboard-controls';
 import { AppointmentsPage, BookingTagChip } from './appointments-page';
 import { BOOKING_TAGS, STATUS_BUCKETS, appointmentSummary, bookedByLabel, calendarDay, callMoment, filterAppointments, stateLabel, statusBucket, type Appointment, type CalendarData } from './appointment-data';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
-import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
+import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadBoardPage, LeadDetail, LeadListPage, LeadStage, NumberBlock, Snapshot, StaffMember, StridePatientView } from './dashboard-data';
+import { activeFilterCount, ALL_OWNERS, BOARD_BATCH, LIST_BATCH, leadBoardUrl, leadListUrl, NO_FILTERS, PAGE_SIZES, pageCount, pageRows, shouldLoadMore, SOURCE_LABELS, type LeadFilters, type LeadSource } from './lead-list';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
-import { ActivityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display';
+import { ActivityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, formatPhone, leadSourceLabel, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display';
 import type { StaffUser } from './session';
 import { dashboardFetch } from './dashboard-client';
 import { ResolveDialog, ReviewCard } from './review-panel';
@@ -408,42 +409,176 @@ function SkeletonRows({ rows = 4 }: { rows?: number }) {
     </div>)}</div>;
 }
 
+const BOARD_STAGES: LeadStage[] = ['new', 'cadence', 'attention', 'booked', 'closed'];
+type BoardColumns = Record<LeadStage, { rows: Lead[]; total: number }>;
+
+// The Leads page asks the backend for one batch at a time (lead-list.ts): search and filters cover
+// every lead, not the newest 250 the snapshot carries.
 function LeadsPage({ snapshot, staff, mode, initialQuery, initialStage, router, action }: { snapshot: Snapshot; staff: StaffMember[]; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; action: DashboardAction }) {
   const [query, setQuery] = useState(initialQuery);
+  const [search, setSearch] = useState(initialQuery.trim());
+  useEffect(() => { const timer = window.setTimeout(() => setSearch(query.trim()), 300); return () => window.clearTimeout(timer); }, [query]);
+  const [filters, setFilters] = useState<LeadFilters>({ ...NO_FILTERS, stages: initialStage ? [initialStage] : [] });
+  const location = snapshot.calendar_location ?? 'All Locations';
+  const owners = [ALL_OWNERS, ...Array.from(new Set([...staff.map((member) => member.display_name), ...snapshot.leads.map((lead) => lead.owner || 'Unassigned')]))];
+  const views = <div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon" aria-hidden="true">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon" aria-hidden="true">▦</span>Board</Link></div>;
+  const searchBox = <label className="search-field"><span aria-hidden="true">⌕</span><input aria-label="Search leads by name, phone or email" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, phone, email" /></label>;
+  if (mode === 'board') return <LeadBoard owner={filters.owner} owners={owners} onOwner={(owner) => setFilters((current) => ({ ...current, owner }))} search={search} location={location} stage={initialStage} refreshKey={snapshot.generated_at} views={views} searchBox={searchBox} router={router} action={action} />;
+  return <LeadList filters={filters} onFilters={setFilters} owners={owners} search={search} location={location} tools={<>{views}{searchBox}</>} router={router} />;
+}
+
+function LeadList({ filters, onFilters, owners, search, location, tools, router }: { filters: LeadFilters; onFilters: (filters: LeadFilters) => void; owners: string[]; search: string; location: string; tools: ReactNode; router: ReturnType<typeof useRouter> }) {
+  const key = leadListUrl(filters, search, location, 0);
+  const [result, setResult] = useState<{ key: string; page: LeadListPage | null; error: boolean } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [size, setSize] = useState<number>(PAGE_SIZES[0]);
+  const [pageState, setPage] = useState({ key, page: 1 });
+  const [panel, setPanel] = useState<LeadFilters | null>(null);
+  const [strideId, setStrideId] = useState<number | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    dashboardFetch(key, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<LeadListPage> : Promise.reject())
+      .then((page) => setResult({ key, page, error: false }))
+      .catch((error) => { if (error?.name !== 'AbortError') setResult({ key, page: null, error: true }); });
+    return () => controller.abort();
+  }, [key]);
+  const data = result?.key === key ? result : null;
+  const rows = data?.page?.rows ?? [];
+  const total = data?.page?.total ?? 0;
+  const sources = data?.page?.sources;
+  // Changing filters or search starts again from page 1.
+  const page = pageState.key === key ? Math.min(pageState.page, pageCount(rows.length, size)) : 1;
+  const pages = pageCount(rows.length, size);
+  async function loadMore() {
+    if (!data?.page || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const response = await dashboardFetch(leadListUrl(filters, search, location, rows.length));
+      if (!response.ok) throw new Error();
+      const next = await response.json() as LeadListPage;
+      setResult((current) => current?.key === key && current.page ? { ...current, page: { ...next, rows: [...current.page.rows, ...next.rows] } } : current);
+    } catch { /* the button stays; staff can try again */ } finally { setLoadingMore(false); }
+  }
+  const active = activeFilterCount(filters);
+  const chips: Array<[string, LeadFilters]> = [
+    ...(filters.source !== 'all' ? [[`Source: ${SOURCE_LABELS[filters.source]}`, { ...filters, source: 'all' }] as [string, LeadFilters]] : []),
+    ...(filters.stages.length ? [[`Stage: ${filters.stages.map((stage) => statusMeta[stage].label).join(', ')}`, { ...filters, stages: [] }] as [string, LeadFilters]] : []),
+    ...(filters.owner !== ALL_OWNERS ? [[`Owner: ${filters.owner}`, { ...filters, owner: ALL_OWNERS }] as [string, LeadFilters]] : []),
+  ];
+  const filterButton = <div className="filter-menu"><button className="secondary filter-button" type="button" aria-expanded={Boolean(panel)} onClick={() => setPanel(panel ? null : filters)}>Filters{active > 0 && <b className="filter-count">{active}</b>}</button>{panel && <div className="filter-panel" role="dialog" aria-label="Lead filters"><fieldset><legend>Source</legend>{(['all', 'sheet', 'stride'] as LeadSource[]).map((source) => <label key={source}><input type="radio" name="lead-source" checked={panel.source === source} onChange={() => setPanel({ ...panel, source })} />{SOURCE_LABELS[source]}{sources && <small>{sources[source].toLocaleString()}</small>}</label>)}</fieldset><fieldset><legend>Stage</legend>{BOARD_STAGES.map((stage) => <label key={stage}><input type="checkbox" checked={panel.stages.includes(stage)} onChange={(event) => setPanel({ ...panel, stages: event.target.checked ? [...panel.stages, stage] : panel.stages.filter((item) => item !== stage) })} />{statusMeta[stage].label}</label>)}</fieldset><fieldset><legend>Owner</legend><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={panel.owner} onChange={(owner) => setPanel({ ...panel, owner })} options={owners.map((item) => ({ value: item, label: item }))} /></fieldset><footer><button className="secondary" type="button" onClick={() => setPanel(NO_FILTERS)}>Reset</button><button className="primary" type="button" onClick={() => { onFilters(panel); setPanel(null); }}>Apply</button></footer></div>}</div>;
+  const subtitle = sources ? `${sources.sheet.toLocaleString()} Google Sheet leads · ${sources.all.toLocaleString()} in total` : 'Loading leads…';
+  return <><PageTitle title="Lead Pipeline" subtitle={subtitle} tools={<>{tools}{filterButton}</>} />
+    {chips.length > 0 && <div className="filter-chips">{chips.map(([label, without]) => <button type="button" className="filter-chip" key={label} onClick={() => onFilters(without)} aria-label={`Remove filter ${label}`}>{label} <span aria-hidden="true">×</span></button>)}<button type="button" className="clear-filters" onClick={() => onFilters(NO_FILTERS)}>Clear all</button></div>}
+    {!data ? <Panel><SkeletonRows rows={6} /></Panel> : data.error ? <Panel><Empty title="Leads could not be loaded" body="Check the connection, then try again." /></Panel> : !rows.length ? <Panel><Empty title="No matching leads" body="Try another filter, location, or search term." /></Panel> :
+      <Panel><DataTable heads={['Name', 'Stage', 'Next step', 'Phone', 'Owner', 'Added']}>{pageRows(rows, page, size).map((row) => row.kind === 'stride'
+        ? <tr key={row.id} className="row-clickable" onClick={() => setStrideId(row.stride_id)}><td><button type="button" className="row-name" onClick={(event) => { event.stopPropagation(); setStrideId(row.stride_id); }}>{row.full_name}</button><small>{leadSourceLabel(row.source)}</small></td><td>{row.stage ? <StatusBadge stage={row.stage} /> : <span className="status-pill plain">{row.stage_label}</span>}</td><td>{row.next_step}</td><td className="nowrap">{formatPhone(row.phone)}</td><td>—</td><td>{row.created_at ? date(row.created_at) : '—'}</td></tr>
+        : <tr key={row.id} className={`row-clickable row-${row.stage} ${row.number_block ? 'row-blocked' : ''}`} onClick={() => router.push(`/leads/${row.id}`)}><td><Link className="row-name" href={`/leads/${row.id}`} onClick={(event) => event.stopPropagation()}>{row.full_name}</Link><small>{leadSourceLabel(row.source)}</small></td><td><span className="card-tags"><StatusBadge stage={row.stage} paused={row.cadence_state === 'paused'} />{row.number_block && <BlockedTag />}</span></td><td>{row.next_step ?? 'No planned action'}</td><td className="nowrap">{formatPhone(row.phone)}</td><td>{row.owner || 'Unassigned'}</td><td>{date(row.created_at)}</td></tr>)}</DataTable>
+        <footer className="list-footer"><label>Rows per page <SelectMenu className="filter-control page-size" ariaLabel="Rows per page" value={String(size)} onChange={(value) => { setSize(Number(value)); setPage({ key, page: 1 }); }} options={PAGE_SIZES.map((item) => ({ value: String(item), label: String(item) }))} /></label><div className="list-pages"><button className="secondary" type="button" disabled={page <= 1} onClick={() => setPage({ key, page: page - 1 })}>Previous</button><span>Page {page} of {pages}</span><button className="secondary" type="button" disabled={page >= pages} onClick={() => setPage({ key, page: page + 1 })}>Next</button></div><div className="list-loaded"><span>{rows.length.toLocaleString()} of {total.toLocaleString()} loaded</span><button className="secondary" type="button" disabled={loadingMore || rows.length >= total} onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : `Load ${LIST_BATCH} more`}</button></div></footer></Panel>}
+    {strideId !== null && <StridePatientDialog strideId={strideId} onClose={() => setStrideId(null)} />}</>;
+}
+
+// A Stride patient the front desk booked directly (no lead): view only, no calls, texts or moves.
+function StridePatientDialog({ strideId, onClose }: { strideId: number; onClose: () => void }) {
+  const [result, setResult] = useState<{ id: number; view: StridePatientView | null } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    dashboardFetch(`/api/dashboard/stride-patients/${strideId}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<StridePatientView> : Promise.reject())
+      .then((view) => setResult({ id: strideId, view }))
+      .catch((error) => { if (error?.name !== 'AbortError') setResult({ id: strideId, view: null }); });
+    return () => controller.abort();
+  }, [strideId]);
+  const data = result?.id === strideId ? result : null;
+  const patient = data?.view?.patient;
+  return <ModalShell className="stride-dialog" labelId="stride-patient-title" onClose={onClose}><header><div><h2 id="stride-patient-title">{patient?.full_name ?? 'Stride patient'}</h2><p><span className="status-pill plain">Stride</span> View only: booked in Stride, not part of outreach.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close Stride patient">×</button></header>
+    <div className="stride-dialog-body">{!data ? <SkeletonRows rows={3} /> : !patient ? <Empty title="Patient could not be loaded" body="They may have been linked to a lead or removed in Stride." /> : <><dl className="stride-facts"><div><dt>Phone</dt><dd>{formatPhone(patient.phone)}</dd></div><div><dt>Date of birth</dt><dd>{patient.date_of_birth ?? '—'}</dd></div><div><dt>Clinic</dt><dd>{patient.clinic ?? '—'}</dd></div><div><dt>Stage</dt><dd>{patient.stage_label}</dd></div></dl>
+      <h3>Visits</h3>{data.view!.visits.length ? <DataTable heads={['When', 'Visit', 'Status', 'Clinician', 'Location']}>{data.view!.visits.map((visit) => <tr key={visit.id}><td>{visit.start_utc ? visitWhen(visit.start_utc, true) : '—'}</td><td>{visit.type ?? '—'}</td><td>{displayEnum(visit.status)}</td><td>{visit.clinician ?? '—'}</td><td>{visit.location ?? '—'}</td></tr>)}</DataTable> : <p className="muted">No visits in Stride.</p>}</>}</div></ModalShell>;
+}
+
+// The board keeps its look; each column now has its own scroll, a real total, and loads 25 cards at a
+// time (more when scrolled near the bottom). Google Sheet and other leads only: Stride patients are not leads.
+function LeadBoard({ owner, owners, onOwner, search, location, stage, refreshKey, views, searchBox, router, action }: { owner: string; owners: string[]; onOwner: (owner: string) => void; search: string; location: string; stage: LeadStage | null; refreshKey?: string; views: ReactNode; searchBox: ReactNode; router: ReturnType<typeof useRouter>; action: DashboardAction }) {
+  const key = leadBoardUrl(owner, search, location, stage ?? undefined);
+  const [board, setBoard] = useState<{ key: string; columns: BoardColumns | null } | null>(null);
+  const [loading, setLoading] = useState<Partial<Record<LeadStage, boolean>>>({});
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<LeadStage | null>(null);
   const [moving, setMoving] = useState(false);
+  const columns = board?.key === key ? board.columns : null;
+  const loaded = useRef<{ key: string; columns: BoardColumns | null } | null>(null);
+  useEffect(() => { loaded.current = board; }, [board]);
 
-  async function drop(stage: LeadStage) {
+  // A fetch of the first `limit` cards of some columns (all when none named) replaces them.
+  async function fetchColumns(stages: LeadStage[] | null, limit: number, signal?: AbortSignal) {
+    const urls = stages ? stages.map((item) => leadBoardUrl(owner, search, location, item, 0, limit)) : [leadBoardUrl(owner, search, location, stage ?? undefined, 0, limit)];
+    const pages = await Promise.all(urls.map((url) => dashboardFetch(url, { signal }).then((response) => response.ok ? response.json() as Promise<LeadBoardPage> : Promise.reject(new Error('board')))));
+    return Object.assign({}, ...pages.map((page) => page.columns)) as Partial<BoardColumns>;
+  }
+  function merge(found: Partial<BoardColumns>) {
+    setBoard((current) => {
+      const base = current?.key === key && current.columns ? current.columns : Object.fromEntries(BOARD_STAGES.map((item) => [item, { rows: [], total: 0 }])) as unknown as BoardColumns;
+      return { key, columns: { ...base, ...found } };
+    });
+  }
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchColumns(null, BOARD_BATCH, controller.signal).then(merge).catch((error) => { if (error?.name !== 'AbortError') setBoard({ key, columns: null }); });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  // The snapshot refreshes every 20 s; refresh the cards already shown with it so the board stays live.
+  useEffect(() => {
+    const current = loaded.current;
+    if (!refreshKey || current?.key !== key || !current.columns) return;
+    const shown = Math.min(100, Math.max(BOARD_BATCH, ...BOARD_STAGES.map((item) => current.columns![item].rows.length)));
+    fetchColumns(null, shown).then(merge).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  async function loadMore(column: LeadStage) {
+    const current = columns?.[column];
+    if (!current || loading[column] || current.rows.length >= current.total) return;
+    setLoading((value) => ({ ...value, [column]: true }));
+    try {
+      const response = await dashboardFetch(leadBoardUrl(owner, search, location, column, current.rows.length));
+      if (!response.ok) throw new Error();
+      const next = (await response.json() as LeadBoardPage).columns[column];
+      if (next) setBoard((value) => {
+        if (value?.key !== key || !value.columns) return value;
+        const seen = new Set(value.columns[column].rows.map((lead) => lead.id));
+        return { key, columns: { ...value.columns, [column]: { rows: [...value.columns[column].rows, ...next.rows.filter((lead) => !seen.has(lead.id))], total: next.total } } };
+      });
+    } catch { /* scrolling again retries */ } finally { setLoading((value) => ({ ...value, [column]: false })); }
+  }
+
+  async function drop(target: LeadStage) {
     const id = dragging;
     setOver(null);
     setDragging(null);
-    if (!id || moving) return;
-    const lead = snapshot.leads.find((item) => item.id === id);
-    if (!lead || lead.stage === stage || !canMoveOnBoard(lead.stage)) return;
+    if (!id || moving || !columns) return;
+    const lead = BOARD_STAGES.flatMap((item) => columns[item].rows).find((item) => item.id === id);
+    if (!lead || lead.stage === target || !canMoveOnBoard(lead.stage)) return;
     // A flagged lead goes back into outreach only through a review choice (the backend refuses the
     // move too): open the lead, where Resolve review shows the reason and the choices.
-    if (stage === 'cadence' && lead.needs_review) { router.push(`/leads/${id}`); return; }
+    if (target === 'cadence' && lead.needs_review) { router.push(`/leads/${id}`); return; }
     // Restarting contacts a real patient from day zero, so it is confirmed first.
-    if (stage === 'new' && !window.confirm(
+    if (target === 'new' && !window.confirm(
       `Restart outreach for ${lead.full_name}?
 
 The remaining schedule is discarded and a new cadence begins from today. They will be called and texted again from the first step.`
     )) return;
     setMoving(true);
-    try { await action(`leads/${id}/stage`, 'POST', { stage }); } finally { setMoving(false); }
+    try {
+      await action(`leads/${id}/stage`, 'POST', { stage: target });
+      // Reload both columns (and their totals) as far as they were scrolled.
+      const affected = BOARD_STAGES.filter((item) => item === lead.stage || item === target);
+      merge(await fetchColumns(affected, Math.min(100, Math.max(BOARD_BATCH, ...affected.map((item) => columns[item].rows.length)))));
+    } catch { /* action() already showed the error */ } finally { setMoving(false); }
   }
-  const [owner, setOwner] = useState('All Owners');
-  const availableOwners = Array.from(new Set([...staff.map((member) => member.display_name), ...snapshot.leads.map((lead) => lead.owner || 'Unassigned')]));
-  const leads = snapshot.leads.filter((lead) =>
-    lead.full_name.toLowerCase().includes(query.trim().toLowerCase()) &&
-    (owner === 'All Owners' || (lead.owner || 'Unassigned') === owner) &&
-    (!initialStage || lead.stage === initialStage)
-  );
-  return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon" aria-hidden="true">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon" aria-hidden="true">▦</span>Board</Link></div><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={setOwner} options={['All Owners', ...availableOwners].map((item) => ({ value: item, label: item }))} /><label className="search-field"><span aria-hidden="true">⌕</span><input aria-label="Filter leads by name or contact details" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label></>} />
-    {initialStage && <div className="active-filter">Showing {statusMeta[initialStage].label} leads <Link href="/leads">Clear filter</Link></div>}
-    {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage} ${over === stage ? 'drop-target' : ''}`} key={stage} onDragOver={(event) => { if (!dragging) return; event.preventDefault(); setOver(stage); }} onDragLeave={() => setOver((current) => current === stage ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(stage); }}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{over === stage && dragging && <p className="drop-hint">{stage === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[stage].label}`}</p>}</div></article>)}</section> :
-      <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage} ${lead.number_block ? 'row-blocked' : ''}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><span className="card-tags"><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.number_block && <BlockedTag />}</span></td><td>{lead.owner ?? 'Unassigned'}</td><td>{sourceLabel(lead.source)}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
+  return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<>{views}<SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={onOwner} options={owners.map((item) => ({ value: item, label: item }))} />{searchBox}</>} />
+    {stage && <div className="active-filter">Showing {statusMeta[stage].label} leads <Link href="/leads">Clear filter</Link></div>}
+    {board?.key === key && !columns ? <Panel><Empty title="Leads could not be loaded" body="Check the connection, then try again." /></Panel> : !columns ? <SkeletonBoard /> : <section className="pipeline paged">{BOARD_STAGES.map((column) => { const { rows, total } = columns[column]; return <article className={`pipeline-column ${column} ${over === column ? 'drop-target' : ''}`} key={column} onDragOver={(event) => { if (!dragging) return; event.preventDefault(); setOver(column); }} onDragLeave={() => setOver((current) => current === column ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(column); }}><header><StatusGlyph stage={column} /><h2>{statusMeta[column].label}</h2><small>{total.toLocaleString()}</small></header><div className="lead-stack" onScroll={(event) => { const node = event.currentTarget; if (shouldLoadMore(node.scrollTop, node.clientHeight, node.scrollHeight, rows.length, total)) void loadMore(column); }}>{rows.map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{loading[column] && <>{[0, 1].map((item) => <div className="lead-card skeleton-card" key={`more-${item}`} aria-hidden="true"><Skeleton w="62%" h={17} /><Skeleton w="45%" /><Skeleton w="52%" h={24} /></div>)}<p className="column-note" role="status">Loading {BOARD_BATCH} more…</p></>}{!loading[column] && total > 0 && rows.length >= total && <p className="column-note">All {total.toLocaleString()} shown</p>}{over === column && dragging && <p className="drop-hint">{column === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[column].label}`}</p>}</div><footer className="column-footer">Showing {rows.length.toLocaleString()} of {total.toLocaleString()}</footer></article>; })}</section>}</>;
 }
 
 function ReviewPage({ snapshot, action, onResolved, loading }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string, choice: ReviewChoice) => void; loading: boolean }) {
@@ -1442,8 +1577,8 @@ function exportLeadReport(snapshot: Snapshot) {
 function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
   if (location === 'All Locations') return { ...snapshot, calendar_location: location };
   const leads = snapshot.leads.filter((lead) => lead.location === location);
-  const counts = { new: 0, cadence: 0, attention: 0, booked: 0, closed: 0 } satisfies Record<LeadStage, number>;
-  leads.forEach((lead) => { counts[lead.stage] += 1; });
+  // Real per-clinic totals from the backend; the loaded leads are only the newest ones.
+  const counts = { new: 0, cadence: 0, attention: 0, booked: 0, closed: 0, ...snapshot.counts_by_location?.[location] } satisfies Record<LeadStage, number>;
   return {
     ...snapshot,
     calendar_location: location,

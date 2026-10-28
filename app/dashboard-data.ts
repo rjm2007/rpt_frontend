@@ -38,6 +38,50 @@ export type Lead = {
   review?: Review | null;
   // Staff chose "Continue with calls only": no text goes to this lead.
   texts_off?: boolean;
+  // Set by the paged lead-list / lead-board endpoints.
+  kind?: 'lead';
+};
+
+// A Stride patient with no linked lead (front desk booked them directly): view only, never on the board.
+export type StrideRow = {
+  kind: 'stride';
+  id: string;
+  stride_id: number;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  source: 'stride';
+  date_of_birth: string | null;
+  created_at: string | null;
+  // 'booked' with a visit still on the books, else null and a plain label.
+  stage: 'booked' | null;
+  stage_label: string;
+  next_step: string;
+  owner: null;
+};
+
+export type LeadListRow = Lead | StrideRow;
+
+// GET lead-list: one batch (newest first) matching the filters, the real total, counts per source.
+export type LeadListPage = {
+  rows: LeadListRow[];
+  total: number;
+  sources: Record<'all' | 'sheet' | 'stride', number>;
+  offset: number;
+  limit: number;
+};
+
+// GET lead-board: per column the next cards and the column's real total.
+export type LeadBoardPage = {
+  columns: Partial<Record<LeadStage, { rows: Lead[]; total: number }>>;
+  offset: number;
+  limit: number;
+};
+
+// GET stride-patients/{id}: the read-only Stride patient view.
+export type StridePatientView = {
+  patient: StrideRow & { clinic: string | null };
+  visits: Array<{ id: number; start_utc: string | null; type: string | null; status: string; clinician: string | null; location: string | null }>;
 };
 
 // Demo also has 'appointment' (Stride cancel / no-show) and 'booking' (agent could not confirm).
@@ -167,7 +211,9 @@ export type Metrics = {
 
 export type Snapshot = {
   calendar_location?: string;
+  // Real totals over every lead (the leads list below is only the newest 250 plus open reviews).
   counts: Record<LeadStage, number>;
+  counts_by_location?: Record<string, Record<LeadStage, number>>;
   leads: Lead[];
   // Next visits still on the books, ours and Stride's, soonest first.
   appointments: Appointment[];

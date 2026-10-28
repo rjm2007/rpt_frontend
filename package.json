@@ -18,7 +18,8 @@
     "test:auth": "node --experimental-strip-types --test app/session.test.ts",
     "test:dashboard": "node --experimental-strip-types --test app/dashboard-client.test.ts",
     "test:calendar": "node --experimental-strip-types --test app/appointment-data.test.ts",
-    "test:review": "node --experimental-strip-types --test app/review.test.ts"
+    "test:review": "node --experimental-strip-types --test app/review.test.ts",
+    "test:leads": "node --experimental-strip-types --test app/lead-list.test.ts"
   },
   "dependencies": {
     "next": "16.3.8",

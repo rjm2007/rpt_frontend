@@ -36,6 +36,23 @@ export function sourceLabel(value: unknown) {
   return displayEnum(value);
 }
 
+// Where a Leads page row started (owner, 2026-10-28): a Sheet lead stays "Google Sheet" once booked.
+export function leadSourceLabel(value: unknown) {
+  const normalized = key(value);
+  if (normalized === 'google_sheets') return 'Google Sheet';
+  if (normalized === 'stride') return 'Stride';
+  return sourceLabel(value);
+}
+
+// Full number, formatted (owner approved showing it on the dashboard): +19495551234 -> (949) 555-1234.
+export function formatPhone(value: unknown) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '—';
+  const digits = raw.replace(/\D/g, '');
+  const us = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits.length === 10 ? digits : null;
+  return us ? `(${us.slice(0, 3)}) ${us.slice(3, 6)}-${us.slice(6)}` : raw;
+}
+
 export function timezoneLabel(value: unknown) {
   const raw = String(value ?? '').trim();
   return raw ? raw.replace(/[\/_-]+/g, ' ').replace(/\s+/g, ' ') : 'Not recorded';

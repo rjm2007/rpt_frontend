@@ -21,6 +21,8 @@ import {
   bookedBySource,
   visitMark,
   visitStatus,
+  appointmentMinutes,
+  calendarWallTime,
   type Appointment,
   type OpenSlotDay,
 } from "./appointment-data.ts";
@@ -224,4 +226,20 @@ test("the heading has a short form for a tight top bar", () => {
   const week = ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"];
   assert.deepEqual(periodLabels("Week", "2026-10-27", week), { long: "Oct 26 – Nov 1, 2026", short: "Oct 26 – Nov 1" });
   assert.deepEqual(periodLabels("Month", "2026-10-27", week), { long: "October 2026", short: "Oct 2026" });
+});
+
+// The calendar shows clinic (California) time like the lead page, not the Stride location's
+// zone (the demo's Stride location is US/Eastern: a 2:00 PM visit showed at 5:00 PM, 2026-10-28).
+test("calendar shows a visit at the lead page's clinic time, on the clinic's day", () => {
+  const leadPage = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" });
+  const visit = "2026-10-29T21:00:00Z"; // 2:00 PM PT, 5:00 PM Eastern
+  assert.equal(leadPage(visit), "2:00 PM");
+  assert.equal(calendarWallTime(visit), "2026-10-29T14:00");
+  assert.equal(appointmentMinutes({ start_utc: visit } as Appointment), 14 * 60);
+  // 01:00 Eastern on Nov 3 is 22:00 PT on Nov 2: the calendar puts it on Nov 2.
+  const late = "2026-11-03T06:00:00Z";
+  assert.equal(calendarDay(late), "2026-11-02");
+  assert.equal(calendarWallTime(late, "America/Los_Angeles"), "2026-11-02T22:00");
+  assert.equal(calendarDay(late, "America/New_York"), "2026-11-03"); // what it showed before
 });

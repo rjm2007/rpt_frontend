@@ -1,0 +1,10 @@
+node_modules
+.next
+dist
+.vinext
+.wrangler
+.env*
+dashboard.env
+.git
+.claude
+*.md

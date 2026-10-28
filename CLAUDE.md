@@ -9,6 +9,11 @@ no provider credentials: every data call goes through a same-origin proxy to the
 Deployed on Vercel at `rpt-frontend-gamma.vercel.app` (repo `rjm2007/rpt_frontend`, backend `https://demo.aibolt.ai`) (`vercel.json` runs `npm run build:vercel`, the native
 Next build). `npm run build` produces a Vinext/Vite bundle for Cloudflare Workers / OpenAI Sites instead.
 
+Moving (branch `feature/own-postgres`, see `../DB-Move-Runbook.md`): `Dockerfile` (native Next build,
+`output: 'standalone'`) runs on the demo EC2 as service `dashboard` at `https://dashboard.demo.aibolt.ai`, env in
+`dashboard.env` there; it calls the backend at `http://api:8000` inside Docker (`app/dashboard-origin.ts`, same as
+production). Vercel stays for a week after the move, then is retired.
+
 ## Folder map
 
 | Path | Contents | Has CLAUDE.md |
@@ -35,7 +40,7 @@ npm run build:vercel   # what Vercel builds
 
 | Variable | Purpose |
 | --- | --- |
-| `DASHBOARD_API_ORIGIN` | Backend base URL (`https://stride.aibolt.ai` in production; must be HTTPS) |
+| `DASHBOARD_API_ORIGIN` | Backend base URL (`https://demo.aibolt.ai` on Vercel; must be HTTPS, except `http://api:8000` inside the server's Docker network) |
 | `DASHBOARD_API_TOKEN` | Shared server-to-server token; must equal the backend's `DASHBOARD_API_TOKEN` |
 | `DASHBOARD_USERS_JSON` | Staff roster: id, display name, password (≥12 chars), role; exactly one `super_admin` |
 | `DASHBOARD_SESSION_SECRET` | ≥32 chars; signs the 12-hour `rpt_staff_session` cookie |

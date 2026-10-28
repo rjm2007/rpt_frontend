@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStaffUser } from '../../../session';
+import { backendOrigin } from '../../../dashboard-origin';
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 // Every backend route the browser may reach, listed explicitly. A path missing
@@ -48,12 +49,13 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
   }
 
-  const origin = process.env.DASHBOARD_API_ORIGIN?.replace(/\/$/, '');
   const token = process.env.DASHBOARD_API_TOKEN;
-  if (!origin || !token) {
+  if (!process.env.DASHBOARD_API_ORIGIN || !token) {
     return NextResponse.json({ detail: 'dashboard API is not configured' }, { status: 503 });
   }
-  if (process.env.NODE_ENV === 'production' && !origin.startsWith('https://')) {
+  // HTTPS, or http://api:8000 inside the demo server's Docker network (see dashboard-origin.ts).
+  const origin = backendOrigin(process.env.DASHBOARD_API_ORIGIN, process.env.NODE_ENV);
+  if (!origin) {
     return NextResponse.json({ detail: 'dashboard API must use HTTPS' }, { status: 503 });
   }
 

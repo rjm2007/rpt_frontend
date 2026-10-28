@@ -8,7 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
 import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadBoardPage, LeadDetail, LeadListPage, LeadStage, NumberBlock, Snapshot, StaffMember, StridePatientView } from './dashboard-data';
-import { activeFilterCount, ALL_OWNERS, BOARD_BATCH, LIST_BATCH, leadBoardUrl, leadListUrl, NO_FILTERS, PAGE_SIZES, pageCount, pageRows, shouldLoadMore, SOURCE_LABELS, type LeadFilters, type LeadSource } from './lead-list';
+import { activeFilterCount, ALL_OWNERS, BOARD_BATCH, createdByDay, LIST_BATCH, LIST_STATE_KEY, leadBoardUrl, leadListUrl, listSubtitle, NO_FILTERS, PAGE_SIZES, pageCount, pageRows, readListState, refreshPlan, replaceColumns, shouldLoadMore, SOURCE_LABELS, type LeadFilters, type LeadSource, type ListState } from './lead-list';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
 import { ActivityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, formatPhone, leadSourceLabel, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel } from './display';
 import type { StaffUser } from './session';
@@ -415,33 +415,60 @@ type BoardColumns = Record<LeadStage, { rows: Lead[]; total: number }>;
 // The Leads page asks the backend for one batch at a time (lead-list.ts): search and filters cover
 // every lead, not the newest 250 the snapshot carries.
 function LeadsPage({ snapshot, staff, mode, initialQuery, initialStage, router, action }: { snapshot: Snapshot; staff: StaffMember[]; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; action: DashboardAction }) {
-  const [query, setQuery] = useState(initialQuery);
-  const [search, setSearch] = useState(initialQuery.trim());
+  // Back from a lead returns to the same search, filters and page (a link with ?search / ?stage starts fresh).
+  const [restored] = useState(() => {
+    if (mode !== 'list' || initialQuery || initialStage) return null;
+    try { return readListState(window.sessionStorage.getItem(LIST_STATE_KEY)); } catch { return null; }
+  });
+  const [query, setQuery] = useState(restored?.search ?? initialQuery);
+  const [search, setSearch] = useState((restored?.search ?? initialQuery).trim());
   useEffect(() => { const timer = window.setTimeout(() => setSearch(query.trim()), 300); return () => window.clearTimeout(timer); }, [query]);
-  const [filters, setFilters] = useState<LeadFilters>({ ...NO_FILTERS, stages: initialStage ? [initialStage] : [] });
+  const [filters, setFilters] = useState<LeadFilters>(restored?.filters ?? { ...NO_FILTERS, stages: initialStage ? [initialStage] : [] });
   const location = snapshot.calendar_location ?? 'All Locations';
-  const owners = [ALL_OWNERS, ...Array.from(new Set([...staff.map((member) => member.display_name), ...snapshot.leads.map((lead) => lead.owner || 'Unassigned')]))];
+  // Owners on any lead (the backend counts every lead; the loaded snapshot leads are only the newest).
+  const owners = [ALL_OWNERS, ...Array.from(new Set([...staff.map((member) => member.display_name), ...(snapshot.owners ?? snapshot.leads.map((lead) => lead.owner || 'Unassigned'))]))];
   const views = <div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon" aria-hidden="true">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon" aria-hidden="true">▦</span>Board</Link></div>;
   const searchBox = <label className="search-field"><span aria-hidden="true">⌕</span><input aria-label="Search leads by name, phone or email" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, phone, email" /></label>;
   if (mode === 'board') return <LeadBoard owner={filters.owner} owners={owners} onOwner={(owner) => setFilters((current) => ({ ...current, owner }))} search={search} location={location} stage={initialStage} refreshKey={snapshot.generated_at} views={views} searchBox={searchBox} router={router} action={action} />;
-  return <LeadList filters={filters} onFilters={setFilters} owners={owners} search={search} location={location} tools={<>{views}{searchBox}</>} router={router} />;
+  return <LeadList filters={filters} onFilters={setFilters} owners={owners} search={search} location={location} restored={restored} tools={<>{views}{searchBox}</>} router={router} />;
 }
 
-function LeadList({ filters, onFilters, owners, search, location, tools, router }: { filters: LeadFilters; onFilters: (filters: LeadFilters) => void; owners: string[]; search: string; location: string; tools: ReactNode; router: ReturnType<typeof useRouter> }) {
+function LeadList({ filters, onFilters, owners, search, location, restored, tools, router }: { filters: LeadFilters; onFilters: (filters: LeadFilters) => void; owners: string[]; search: string; location: string; restored: ListState | null; tools: ReactNode; router: ReturnType<typeof useRouter> }) {
   const key = leadListUrl(filters, search, location, 0);
   const [result, setResult] = useState<{ key: string; page: LeadListPage | null; error: boolean } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [size, setSize] = useState<number>(PAGE_SIZES[0]);
-  const [pageState, setPage] = useState({ key, page: 1 });
+  const [size, setSize] = useState<number>(restored?.size ?? PAGE_SIZES[0]);
+  const [pageState, setPage] = useState({ key, page: restored?.page ?? 1 });
+  // Rows to load again when coming back (only for the restored filters).
+  const [want] = useState({ key, loaded: restored?.loaded ?? 0 });
   const [panel, setPanel] = useState<LeadFilters | null>(null);
+  const menu = useRef<HTMLDivElement>(null);
   const [strideId, setStrideId] = useState<number | null>(null);
+  // The panel closes without applying on Esc or a click outside it.
+  useEffect(() => {
+    if (!panel) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setPanel(null); };
+    const onPointer = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node)) setPanel(null); };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onPointer); };
+  }, [panel]);
   useEffect(() => {
     const controller = new AbortController();
-    dashboardFetch(key, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() as Promise<LeadListPage> : Promise.reject())
-      .then((page) => setResult({ key, page, error: false }))
-      .catch((error) => { if (error?.name !== 'AbortError') setResult({ key, page: null, error: true }); });
+    const batch = (offset: number) => dashboardFetch(leadListUrl(filters, search, location, offset), { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<LeadListPage> : Promise.reject());
+    (async () => {
+      const page = await batch(0);
+      // Coming back to the remembered filters: load as many batches as before, so the page exists again.
+      while (want.key === key && page.rows.length < Math.min(want.loaded, page.total)) {
+        const next = await batch(page.rows.length);
+        if (!next.rows.length) break;
+        page.rows = [...page.rows, ...next.rows];
+      }
+      setResult({ key, page, error: false });
+    })().catch((error) => { if (error?.name !== 'AbortError') setResult({ key, page: null, error: true }); });
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const data = result?.key === key ? result : null;
   const rows = data?.page?.rows ?? [];
@@ -450,8 +477,11 @@ function LeadList({ filters, onFilters, owners, search, location, tools, router 
   // Changing filters or search starts again from page 1.
   const page = pageState.key === key ? Math.min(pageState.page, pageCount(rows.length, size)) : 1;
   const pages = pageCount(rows.length, size);
+  useEffect(() => {
+    try { window.sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify({ search, filters, page: pageState.key === key ? pageState.page : 1, size, loaded: rows.length } satisfies ListState)); } catch { /* private window: nothing remembered */ }
+  }, [search, filters, pageState, key, size, rows.length]);
   async function loadMore() {
-    if (!data?.page || loadingMore) return;
+    if (!data?.page || loadingMore || rows.length >= total) return;
     setLoadingMore(true);
     try {
       const response = await dashboardFetch(leadListUrl(filters, search, location, rows.length));
@@ -466,15 +496,15 @@ function LeadList({ filters, onFilters, owners, search, location, tools, router 
     ...(filters.stages.length ? [[`Stage: ${filters.stages.map((stage) => statusMeta[stage].label).join(', ')}`, { ...filters, stages: [] }] as [string, LeadFilters]] : []),
     ...(filters.owner !== ALL_OWNERS ? [[`Owner: ${filters.owner}`, { ...filters, owner: ALL_OWNERS }] as [string, LeadFilters]] : []),
   ];
-  const filterButton = <div className="filter-menu"><button className="secondary filter-button" type="button" aria-expanded={Boolean(panel)} onClick={() => setPanel(panel ? null : filters)}>Filters{active > 0 && <b className="filter-count">{active}</b>}</button>{panel && <div className="filter-panel" role="dialog" aria-label="Lead filters"><fieldset><legend>Source</legend>{(['all', 'sheet', 'stride'] as LeadSource[]).map((source) => <label key={source}><input type="radio" name="lead-source" checked={panel.source === source} onChange={() => setPanel({ ...panel, source })} />{SOURCE_LABELS[source]}{sources && <small>{sources[source].toLocaleString()}</small>}</label>)}</fieldset><fieldset><legend>Stage</legend>{BOARD_STAGES.map((stage) => <label key={stage}><input type="checkbox" checked={panel.stages.includes(stage)} onChange={(event) => setPanel({ ...panel, stages: event.target.checked ? [...panel.stages, stage] : panel.stages.filter((item) => item !== stage) })} />{statusMeta[stage].label}</label>)}</fieldset><fieldset><legend>Owner</legend><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={panel.owner} onChange={(owner) => setPanel({ ...panel, owner })} options={owners.map((item) => ({ value: item, label: item }))} /></fieldset><footer><button className="secondary" type="button" onClick={() => setPanel(NO_FILTERS)}>Reset</button><button className="primary" type="button" onClick={() => { onFilters(panel); setPanel(null); }}>Apply</button></footer></div>}</div>;
-  const subtitle = sources ? `${sources.sheet.toLocaleString()} Google Sheet leads · ${sources.all.toLocaleString()} in total` : 'Loading leads…';
+  const filterButton = <div className="filter-menu" ref={menu}><button className="secondary filter-button" type="button" aria-expanded={Boolean(panel)} onClick={() => setPanel(panel ? null : filters)}>Filters{active > 0 && <b className="filter-count">{active}</b>}</button>{panel && <div className="filter-panel" role="dialog" aria-label="Lead filters"><fieldset><legend>Source</legend>{(['all', 'sheet', 'stride'] as LeadSource[]).map((source) => <label key={source}><input type="radio" name="lead-source" checked={panel.source === source} onChange={() => setPanel({ ...panel, source })} />{SOURCE_LABELS[source]}{sources && <small>{sources[source].toLocaleString()}</small>}</label>)}</fieldset><fieldset><legend>Stage</legend>{BOARD_STAGES.map((stage) => <label key={stage}><input type="checkbox" checked={panel.stages.includes(stage)} onChange={(event) => setPanel({ ...panel, stages: event.target.checked ? [...panel.stages, stage] : panel.stages.filter((item) => item !== stage) })} />{statusMeta[stage].label}</label>)}</fieldset><fieldset><legend>Owner</legend><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={panel.owner} onChange={(owner) => setPanel({ ...panel, owner })} options={owners.map((item) => ({ value: item, label: item }))} /></fieldset><footer><button className="secondary" type="button" onClick={() => setPanel(NO_FILTERS)}>Reset</button><button className="primary" type="button" onClick={() => { onFilters(panel); setPanel(null); }}>Apply</button></footer></div>}</div>;
+  const subtitle = data?.page ? listSubtitle(total, data.page.overall ?? total, Boolean(active || search)) : 'Loading leads…';
   return <><PageTitle title="Lead Pipeline" subtitle={subtitle} tools={<>{tools}{filterButton}</>} />
     {chips.length > 0 && <div className="filter-chips">{chips.map(([label, without]) => <button type="button" className="filter-chip" key={label} onClick={() => onFilters(without)} aria-label={`Remove filter ${label}`}>{label} <span aria-hidden="true">×</span></button>)}<button type="button" className="clear-filters" onClick={() => onFilters(NO_FILTERS)}>Clear all</button></div>}
     {!data ? <Panel><SkeletonRows rows={6} /></Panel> : data.error ? <Panel><Empty title="Leads could not be loaded" body="Check the connection, then try again." /></Panel> : !rows.length ? <Panel><Empty title="No matching leads" body="Try another filter, location, or search term." /></Panel> :
       <Panel><DataTable heads={['Name', 'Stage', 'Next step', 'Phone', 'Owner', 'Added']}>{pageRows(rows, page, size).map((row) => row.kind === 'stride'
         ? <tr key={row.id} className="row-clickable" onClick={() => setStrideId(row.stride_id)}><td><button type="button" className="row-name" onClick={(event) => { event.stopPropagation(); setStrideId(row.stride_id); }}>{row.full_name}</button><small>{leadSourceLabel(row.source)}</small></td><td>{row.stage ? <StatusBadge stage={row.stage} /> : <span className="status-pill plain">{row.stage_label}</span>}</td><td>{row.next_step}</td><td className="nowrap">{formatPhone(row.phone)}</td><td>—</td><td>{row.created_at ? date(row.created_at) : '—'}</td></tr>
         : <tr key={row.id} className={`row-clickable row-${row.stage} ${row.number_block ? 'row-blocked' : ''}`} onClick={() => router.push(`/leads/${row.id}`)}><td><Link className="row-name" href={`/leads/${row.id}`} onClick={(event) => event.stopPropagation()}>{row.full_name}</Link><small>{leadSourceLabel(row.source)}</small></td><td><span className="card-tags"><StatusBadge stage={row.stage} paused={row.cadence_state === 'paused'} />{row.number_block && <BlockedTag />}</span></td><td>{row.next_step ?? 'No planned action'}</td><td className="nowrap">{formatPhone(row.phone)}</td><td>{row.owner || 'Unassigned'}</td><td>{date(row.created_at)}</td></tr>)}</DataTable>
-        <footer className="list-footer"><label>Rows per page <SelectMenu className="filter-control page-size" ariaLabel="Rows per page" value={String(size)} onChange={(value) => { setSize(Number(value)); setPage({ key, page: 1 }); }} options={PAGE_SIZES.map((item) => ({ value: String(item), label: String(item) }))} /></label><div className="list-pages"><button className="secondary" type="button" disabled={page <= 1} onClick={() => setPage({ key, page: page - 1 })}>Previous</button><span>Page {page} of {pages}</span><button className="secondary" type="button" disabled={page >= pages} onClick={() => setPage({ key, page: page + 1 })}>Next</button></div><div className="list-loaded"><span>{rows.length.toLocaleString()} of {total.toLocaleString()} loaded</span><button className="secondary" type="button" disabled={loadingMore || rows.length >= total} onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : `Load ${LIST_BATCH} more`}</button></div></footer></Panel>}
+        <footer className="list-footer"><label>Rows per page <SelectMenu className="filter-control page-size" ariaLabel="Rows per page" value={String(size)} onChange={(value) => { setSize(Number(value)); setPage({ key, page: 1 }); }} options={PAGE_SIZES.map((item) => ({ value: String(item), label: String(item) }))} /></label><div className="list-pages"><button className="secondary" type="button" disabled={page <= 1} onClick={() => setPage({ key, page: page - 1 })}>Previous</button><span>Page {page} of {pages}</span><button className="secondary" type="button" disabled={page >= pages} onClick={() => setPage({ key, page: page + 1 })}>Next</button></div><div className="list-loaded">{rows.length >= total ? <span>All {total.toLocaleString()} loaded</span> : <><span>{rows.length.toLocaleString()} of {total.toLocaleString()} loaded</span><button className="secondary" type="button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : `Load ${LIST_BATCH} more`}</button></>}</div></footer></Panel>}
     {strideId !== null && <StridePatientDialog strideId={strideId} onClose={() => setStrideId(null)} />}</>;
 }
 
@@ -491,7 +521,7 @@ function StridePatientDialog({ strideId, onClose }: { strideId: number; onClose:
   }, [strideId]);
   const data = result?.id === strideId ? result : null;
   const patient = data?.view?.patient;
-  return <ModalShell className="stride-dialog" labelId="stride-patient-title" onClose={onClose}><header><div><h2 id="stride-patient-title">{patient?.full_name ?? 'Stride patient'}</h2><p><span className="status-pill plain">Stride</span> View only: booked in Stride, not part of outreach.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close Stride patient">×</button></header>
+  return <ModalShell className="stride-dialog" labelId="stride-patient-title" onClose={onClose}><header><div><h2 id="stride-patient-title">{patient?.full_name ?? 'Stride patient'}</h2><p><span className="status-pill plain">Stride</span> View only: from the Stride export, not part of outreach.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close Stride patient">×</button></header>
     <div className="stride-dialog-body">{!data ? <SkeletonRows rows={3} /> : !patient ? <Empty title="Patient could not be loaded" body="They may have been linked to a lead or removed in Stride." /> : <><dl className="stride-facts"><div><dt>Phone</dt><dd>{formatPhone(patient.phone)}</dd></div><div><dt>Date of birth</dt><dd>{patient.date_of_birth ?? '—'}</dd></div><div><dt>Clinic</dt><dd>{patient.clinic ?? '—'}</dd></div><div><dt>Stage</dt><dd>{patient.stage_label}</dd></div></dl>
       <h3>Visits</h3>{data.view!.visits.length ? <DataTable heads={['When', 'Visit', 'Status', 'Clinician', 'Location']}>{data.view!.visits.map((visit) => <tr key={visit.id}><td>{visit.start_utc ? visitWhen(visit.start_utc, true) : '—'}</td><td>{visit.type ?? '—'}</td><td>{displayEnum(visit.status)}</td><td>{visit.clinician ?? '—'}</td><td>{visit.location ?? '—'}</td></tr>)}</DataTable> : <p className="muted">No visits in Stride.</p>}</>}</div></ModalShell>;
 }
@@ -509,21 +539,42 @@ function LeadBoard({ owner, owners, onOwner, search, location, stage, refreshKey
   const loaded = useRef<{ key: string; columns: BoardColumns | null } | null>(null);
   useEffect(() => { loaded.current = board; }, [board]);
 
-  // A fetch of the first `limit` cards of some columns (all when none named) replaces them.
-  async function fetchColumns(stages: LeadStage[] | null, limit: number, signal?: AbortSignal) {
-    const urls = stages ? stages.map((item) => leadBoardUrl(owner, search, location, item, 0, limit)) : [leadBoardUrl(owner, search, location, stage ?? undefined, 0, limit)];
-    const pages = await Promise.all(urls.map((url) => dashboardFetch(url, { signal }).then((response) => response.ok ? response.json() as Promise<LeadBoardPage> : Promise.reject(new Error('board')))));
-    return Object.assign({}, ...pages.map((page) => page.columns)) as Partial<BoardColumns>;
+  async function boardPage(url: string, signal?: AbortSignal) {
+    const response = await dashboardFetch(url, { signal });
+    if (!response.ok) throw new Error('board');
+    return (await response.json() as LeadBoardPage).columns;
+  }
+  // First load: every column's first 25. Refresh: each named column again, as far as IT was scrolled
+  // (refreshPlan), so no column changes length because of another one.
+  async function fetchColumns(counts: Partial<Record<LeadStage, number>> | null, signal?: AbortSignal): Promise<Partial<BoardColumns>> {
+    if (!counts) return boardPage(leadBoardUrl(owner, search, location, stage ?? undefined), signal);
+    const found: Partial<BoardColumns> = {};
+    await Promise.all(Object.entries(counts).map(async ([column, count]) => {
+      const rows: Lead[] = [];
+      let total = 0;
+      for (const part of refreshPlan(count ?? 0)) {
+        const next = (await boardPage(leadBoardUrl(owner, search, location, column as LeadStage, part.offset, part.limit), signal))[column as LeadStage];
+        rows.push(...(next?.rows ?? []));
+        total = next?.total ?? 0;
+        if (!next || next.rows.length < part.limit) break;
+      }
+      found[column as LeadStage] = { rows, total };
+    }));
+    return found;
   }
   function merge(found: Partial<BoardColumns>) {
     setBoard((current) => {
       const base = current?.key === key && current.columns ? current.columns : Object.fromEntries(BOARD_STAGES.map((item) => [item, { rows: [], total: 0 }])) as unknown as BoardColumns;
-      return { key, columns: { ...base, ...found } };
+      return { key, columns: replaceColumns(base, found) as BoardColumns };
     });
+  }
+  // How far each column was scrolled (cards loaded), for a refresh.
+  function shownCounts(current: BoardColumns, only?: LeadStage[]) {
+    return Object.fromEntries((only ?? (stage ? [stage] : BOARD_STAGES)).map((item) => [item, current[item].rows.length])) as Partial<Record<LeadStage, number>>;
   }
   useEffect(() => {
     const controller = new AbortController();
-    fetchColumns(null, BOARD_BATCH, controller.signal).then(merge).catch((error) => { if (error?.name !== 'AbortError') setBoard({ key, columns: null }); });
+    fetchColumns(null, controller.signal).then(merge).catch((error) => { if (error?.name !== 'AbortError') setBoard({ key, columns: null }); });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -531,8 +582,7 @@ function LeadBoard({ owner, owners, onOwner, search, location, stage, refreshKey
   useEffect(() => {
     const current = loaded.current;
     if (!refreshKey || current?.key !== key || !current.columns) return;
-    const shown = Math.min(100, Math.max(BOARD_BATCH, ...BOARD_STAGES.map((item) => current.columns![item].rows.length)));
-    fetchColumns(null, shown).then(merge).catch(() => undefined);
+    fetchColumns(shownCounts(current.columns)).then(merge).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
@@ -572,13 +622,12 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
     try {
       await action(`leads/${id}/stage`, 'POST', { stage: target });
       // Reload both columns (and their totals) as far as they were scrolled.
-      const affected = BOARD_STAGES.filter((item) => item === lead.stage || item === target);
-      merge(await fetchColumns(affected, Math.min(100, Math.max(BOARD_BATCH, ...affected.map((item) => columns[item].rows.length)))));
+      merge(await fetchColumns(shownCounts(columns, BOARD_STAGES.filter((item) => item === lead.stage || item === target))));
     } catch { /* action() already showed the error */ } finally { setMoving(false); }
   }
   return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<>{views}<SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={onOwner} options={owners.map((item) => ({ value: item, label: item }))} />{searchBox}</>} />
     {stage && <div className="active-filter">Showing {statusMeta[stage].label} leads <Link href="/leads">Clear filter</Link></div>}
-    {board?.key === key && !columns ? <Panel><Empty title="Leads could not be loaded" body="Check the connection, then try again." /></Panel> : !columns ? <SkeletonBoard /> : <section className="pipeline paged">{BOARD_STAGES.map((column) => { const { rows, total } = columns[column]; return <article className={`pipeline-column ${column} ${over === column ? 'drop-target' : ''}`} key={column} onDragOver={(event) => { if (!dragging) return; event.preventDefault(); setOver(column); }} onDragLeave={() => setOver((current) => current === column ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(column); }}><header><StatusGlyph stage={column} /><h2>{statusMeta[column].label}</h2><small>{total.toLocaleString()}</small></header><div className="lead-stack" onScroll={(event) => { const node = event.currentTarget; if (shouldLoadMore(node.scrollTop, node.clientHeight, node.scrollHeight, rows.length, total)) void loadMore(column); }}>{rows.map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{loading[column] && <>{[0, 1].map((item) => <div className="lead-card skeleton-card" key={`more-${item}`} aria-hidden="true"><Skeleton w="62%" h={17} /><Skeleton w="45%" /><Skeleton w="52%" h={24} /></div>)}<p className="column-note" role="status">Loading {BOARD_BATCH} more…</p></>}{!loading[column] && total > 0 && rows.length >= total && <p className="column-note">All {total.toLocaleString()} shown</p>}{over === column && dragging && <p className="drop-hint">{column === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[column].label}`}</p>}</div><footer className="column-footer">Showing {rows.length.toLocaleString()} of {total.toLocaleString()}</footer></article>; })}</section>}</>;
+    {board?.key === key && !columns ? <Panel><Empty title="Leads could not be loaded" body="Check the connection, then try again." /></Panel> : !columns ? <SkeletonBoard /> : !BOARD_STAGES.some((column) => columns[column].total) ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : <section className="pipeline paged">{BOARD_STAGES.map((column) => { const { rows, total } = columns[column]; return <article className={`pipeline-column ${column} ${over === column ? 'drop-target' : ''}`} key={column} onDragOver={(event) => { if (!dragging) return; event.preventDefault(); setOver(column); }} onDragLeave={() => setOver((current) => current === column ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(column); }}><header><StatusGlyph stage={column} /><h2>{statusMeta[column].label}</h2><small>{total.toLocaleString()}</small></header><div className="lead-stack" onScroll={(event) => { const node = event.currentTarget; if (shouldLoadMore(node.scrollTop, node.clientHeight, node.scrollHeight, rows.length, total)) void loadMore(column); }}>{rows.map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{loading[column] && <>{[0, 1].map((item) => <div className="lead-card skeleton-card" key={`more-${item}`} aria-hidden="true"><Skeleton w="62%" h={17} /><Skeleton w="45%" /><Skeleton w="52%" h={24} /></div>)}<p className="column-note" role="status">Loading {BOARD_BATCH} more…</p></>}{!loading[column] && total > 0 && rows.length >= total && <p className="column-note">All {total.toLocaleString()} shown</p>}{over === column && dragging && <p className="drop-hint">{column === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[column].label}`}</p>}</div><footer className="column-footer">Showing {rows.length.toLocaleString()} of {total.toLocaleString()}</footer></article>; })}</section>}</>;
 }
 
 function ReviewPage({ snapshot, action, onResolved, loading }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string, choice: ReviewChoice) => void; loading: boolean }) {
@@ -616,9 +665,9 @@ function leadMovementSeries(snapshot: Snapshot) {
     labels.push(key);
     buckets.set(key, 0);
   }
-  for (const lead of snapshot.leads) {
-    const key = clinicDateKey(String(lead.created_at ?? ''));
-    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  // Backend counts over every lead (the loaded leads are only the newest 250).
+  for (const [key, count] of createdByDay(snapshot.created_by_day ?? [], snapshot.calendar_location ?? 'All Locations')) {
+    if (buckets.has(key)) buckets.set(key, count);
   }
   const points = labels.map((key) => ({
     label: new Date(`${key}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CLINIC_TZ }),

@@ -1284,7 +1284,8 @@ button.assistant-logo:hover { box-shadow: 0 0 0 3px #0b50d033; }
 .filter-menu { position: relative; }
 .filter-button { height: 44px; }
 .filter-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 12px; display: inline-grid; place-items: center; }
-.filter-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: min(300px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 16px 40px #00133b2e; }
+/* Above the assistant button (z-index 30), which covered Apply on a phone. */
+.filter-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: min(300px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 16px 40px #00133b2e; }
 .filter-panel fieldset { border: 0; margin: 0 0 14px; padding: 0; }
 .filter-panel legend { margin-bottom: 6px; font-size: 13px; font-weight: 700; color: var(--ink); }
 .filter-panel label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; color: var(--ink-2); }
@@ -1315,4 +1316,4 @@ td.nowrap { white-space: nowrap; }
 .pipeline.paged .lead-stack > * { flex-shrink: 0; }
 .column-note { margin: 0; text-align: center; color: var(--muted); font-size: 12px; }
 .column-footer { padding: 8px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-@media (max-width: 760px) { .pipeline.paged .pipeline-column { height: 70svh; min-height: 0; } }
+@media (max-width: 760px) { .pipeline.paged .pipeline-column { height: 70svh; min-height: 0; } .filter-panel { position: fixed; left: 16px; right: 16px; top: 96px; width: auto; max-height: calc(100svh - 120px); overflow-y: auto; } }

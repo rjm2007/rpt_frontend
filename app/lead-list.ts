@@ -58,3 +58,66 @@ export function pageRows<T>(rows: T[], page: number, size: number) {
 export function shouldLoadMore(scrollTop: number, clientHeight: number, scrollHeight: number, loaded: number, total: number, margin = 120) {
   return loaded < total && scrollTop + clientHeight >= scrollHeight - margin;
 }
+
+// A board refresh re-reads each column as far as it was scrolled, in batches of LIST_BATCH (the
+// backend's cap), so a column at 142 cards stays at 142 and one at 25 stays at 25 (tester, 2026-10-28:
+// one shared count capped at 100 made columns jump).
+export function refreshPlan(loaded: number) {
+  const plan: Array<{ offset: number; limit: number }> = [];
+  for (let offset = 0, want = Math.max(BOARD_BATCH, loaded); offset < want; offset += LIST_BATCH) {
+    plan.push({ offset, limit: Math.min(LIST_BATCH, want - offset) });
+  }
+  return plan;
+}
+
+// Replace only the columns that were re-read; every other column keeps its cards.
+export function replaceColumns<T>(current: Record<string, T>, found: Partial<Record<string, T>>) {
+  const next = { ...current };
+  for (const [stage, column] of Object.entries(found)) if (column) next[stage] = column;
+  return next;
+}
+
+export function plural(count: number, word: string) {
+  return `${count.toLocaleString('en-US')} ${word}${count === 1 ? '' : 's'}`;
+}
+
+// The list subtitle follows the current filters and search; the overall total is every row.
+export function listSubtitle(total: number, overall: number, filtered: boolean) {
+  return filtered ? `${plural(total, 'lead')} match · ${overall.toLocaleString('en-US')} in total` : `${plural(overall, 'lead')} in total`;
+}
+
+// Analytics: leads created per clinic day (backend counts over every lead), optionally one clinic.
+export function createdByDay(rows: Array<{ day: string; location: string; count: number }>, location: string) {
+  const days = new Map<string, number>();
+  for (const row of rows) {
+    if (location !== 'All Locations' && row.location !== location) continue;
+    days.set(row.day, (days.get(row.day) ?? 0) + row.count);
+  }
+  return days;
+}
+
+// The list remembers search, filters, page and rows loaded for the browser tab, so opening a lead
+// and pressing Back returns to the same place.
+export const LIST_STATE_KEY = 'rpt-leads-list';
+export type ListState = { search: string; filters: LeadFilters; page: number; size: number; loaded: number };
+const STAGE_KEYS = ['new', 'cadence', 'attention', 'booked', 'closed'];
+export function readListState(raw: string | null): ListState | null {
+  try {
+    const value = JSON.parse(raw ?? '') as Partial<ListState>;
+    const filters = value.filters as Partial<LeadFilters> | undefined;
+    if (!filters || !['all', 'sheet', 'stride'].includes(String(filters.source))) return null;
+    return {
+      search: typeof value.search === 'string' ? value.search : '',
+      filters: {
+        source: filters.source as LeadSource,
+        stages: (Array.isArray(filters.stages) ? filters.stages : []).filter((stage) => STAGE_KEYS.includes(stage)) as LeadStage[],
+        owner: typeof filters.owner === 'string' && filters.owner ? filters.owner : ALL_OWNERS,
+      },
+      page: Math.max(1, Math.floor(Number(value.page)) || 1),
+      size: (PAGE_SIZES as readonly number[]).includes(Number(value.size)) ? Number(value.size) : PAGE_SIZES[0],
+      loaded: Math.max(0, Math.floor(Number(value.loaded)) || 0),
+    };
+  } catch {
+    return null;
+  }
+}

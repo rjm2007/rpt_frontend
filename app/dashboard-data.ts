@@ -67,6 +67,8 @@ export type LeadListPage = {
   rows: LeadListRow[];
   total: number;
   sources: Record<'all' | 'sheet' | 'stride', number>;
+  // Every row with no filter or search (subtitle "N leads match · M in total").
+  overall?: number;
   offset: number;
   limit: number;
 };
@@ -214,6 +216,9 @@ export type Snapshot = {
   // Real totals over every lead (the leads list below is only the newest 250 plus open reviews).
   counts: Record<LeadStage, number>;
   counts_by_location?: Record<string, Record<LeadStage, number>>;
+  // Every owner on any lead (Leads page owner filter) and leads created per clinic day (Analytics).
+  owners?: string[];
+  created_by_day?: Array<{ day: string; location: string; count: number }>;
   leads: Lead[];
   // Next visits still on the books, ours and Stride's, soonest first.
   appointments: Appointment[];

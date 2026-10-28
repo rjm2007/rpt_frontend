@@ -45,7 +45,7 @@ test('fails closed for invalid user configuration', () => {
     [USERS[0], { ...USERS[1], role: 'owner' }],
     [USERS[0], { ...USERS[1], role: 'super_admin' }],
     [USERS[0], { ...USERS[1], email: ' ' }],
-    [USERS[0], { ...USERS[1], email: 'invalid' }],
+    [USERS[0], { ...USERS[1], email: 'two words' }],
     [USERS[0], { ...USERS[1], email: 42 }],
     [USERS[0], { ...USERS[1], email: 'ADMIN@EXAMPLE.TEST' }],
   ];

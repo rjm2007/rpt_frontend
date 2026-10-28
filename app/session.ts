@@ -47,7 +47,8 @@ function configuredUsers(): ConfiguredUser[] {
     const role = value.role;
     if (!ID_PATTERN.test(id)) throw new Error('dashboard user ID is invalid');
     if (ids.has(id)) throw new Error('dashboard user IDs must be unique');
-    if (value.email !== undefined && (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    // The "email" is a second login name: a real address or a short one like "admin" (owner, 2026-10-28).
+    if (value.email !== undefined && (!email || email.length > 254 || /\s/.test(email))) {
       throw new Error('dashboard user email is invalid');
     }
     if (email && emails.has(email)) throw new Error('dashboard user emails must be unique');

@@ -4,7 +4,7 @@
 // worker sent nothing, and the page still read "Pause cadence". Staff could not see WHAT had changed.
 // Each flagged lead now carries a `review` from the backend (reason, proof, choices); a choice is the
 // only way to put a flagged lead back into outreach.
-import type { Lead, Review, ReviewChoice, ReviewGroup, ReviewPreview } from './dashboard-data';
+import type { Lead, LeadStage, Review, ReviewChoice, ReviewGroup, ReviewPreview } from './dashboard-data';
 
 export const REVIEW_GROUPS: Array<{ value: ReviewGroup | 'all'; label: string }> = [
   { value: 'all', label: 'All reasons' },
@@ -54,7 +54,10 @@ const CLOSING: ReadonlySet<ReviewChoice> = new Set(['different_person', 'wrong_n
 // technical and other reviews).
 const RESTARTING: ReadonlySet<ReviewChoice> = new Set(['restart_cadence', 'use_new_name_restart', 'keep_old_name_restart', 'use_new_value_restart', 'keep_old_value_restart']);
 
-export function stageAfter(choice: ReviewChoice): 'closed' | 'cadence' | 'new' {
+// A booked lead stays booked whatever closes its card (2026-10-29: only a case change card opens on
+// one, and its one choice keeps the booking); "Booked by front desk" books the lead.
+export function stageAfter(choice: ReviewChoice, current?: LeadStage): 'closed' | 'cadence' | 'new' | 'booked' {
+  if (current === 'booked' || choice === 'booked_by_front_desk') return 'booked';
   if (RESTARTING.has(choice)) return 'new';
   return CLOSING.has(choice) ? 'closed' : 'cadence';
 }
@@ -83,7 +86,14 @@ export const RESOLVED_MESSAGE: Record<ReviewChoice, string> = {
   keep_old_value: 'Old value kept; the Sheet is set back. Outreach continues.',
   use_new_value_restart: 'New value saved. Cadence restarted from Day 0.',
   keep_old_value_restart: 'Old value kept; the Sheet is set back. Cadence restarted from Day 0.',
+  booked_by_front_desk: 'Lead marked Booked: booked by front desk.',
 };
+
+// Every lead with an open review is in the Review Queue: a booked lead with a case change card stays
+// in the Booked column but still needs its card settled (2026-10-29).
+export function inReviewQueue(lead: Pick<Lead, 'stage' | 'needs_review'>): boolean {
+  return lead.stage === 'attention' || Boolean(lead.needs_review);
+}
 
 export const CLOSED_REVIEW_FALLBACK = 'This review is already closed.';
 

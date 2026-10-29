@@ -96,7 +96,9 @@ export type ReviewChoice =
   | 'restart_cadence' | 'send_booking_link'
   // 2026-10-25: restart from Day 0 on the review card; "value" = location / case / date of birth.
   | 'use_new_name_restart' | 'keep_old_name_restart'
-  | 'use_new_value' | 'keep_old_value' | 'use_new_value_restart' | 'keep_old_value_restart';
+  | 'use_new_value' | 'keep_old_value' | 'use_new_value_restart' | 'keep_old_value_restart'
+  // 2026-10-29: the patient asked for a different case; the front desk booked it (Stride brings the visit).
+  | 'booked_by_front_desk';
 
 // One flag as the backend describes it (services/lead_review.py `describe`).
 export type Review = {
@@ -122,7 +124,8 @@ export type ReviewPreview = {
   lead_id: string;
   full_name: string;
   review: Review | null;
-  options: Array<{ choice: ReviewChoice; label: string; effect: string; next_step: string; confirm: string }>;
+  // `done`: the saved message when the backend has its own (a booked lead's case change card).
+  options: Array<{ choice: ReviewChoice; label: string; effect: string; next_step: string; confirm: string; done?: string }>;
   // Set when the lead has no open review any more: why (newer Sheet row on the number, resolved by someone, closed).
   closed?: { reason: 'replaced' | 'resolved' | 'closed'; message: string } | null;
 };

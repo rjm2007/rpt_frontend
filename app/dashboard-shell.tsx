@@ -14,7 +14,7 @@ import { ActivityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, c
 import type { StaffUser } from './session';
 import { dashboardFetch } from './dashboard-client';
 import { ResolveDialog, ReviewCard } from './review-panel';
-import { filterReviews, groupCounts, REVIEW_GROUPS, reviewOf, stageAfter } from './review';
+import { filterReviews, groupCounts, inReviewQueue, REVIEW_GROUPS, reviewOf, stageAfter } from './review';
 import type { ReviewChoice, ReviewGroup } from './dashboard-data';
 
 const statusMeta: Record<LeadStage, { label: string }> = {
@@ -216,13 +216,17 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
 
   // The optimistic board update; the snapshot refetch that action() triggers brings the real state.
   function resolveLeadReview(id: string, choice: ReviewChoice) {
-    const stage = stageAfter(choice);
-    setSnapshot((current) => ({
-      ...current,
-      leads: current.leads.map((lead) => lead.id === id ? { ...lead, stage, needs_review: false, review_reason: null, review: null } : lead),
-      counts: { ...current.counts, attention: Math.max(0, current.counts.attention - 1), [stage]: current.counts[stage] + 1 },
-      system: { ...current.system, review_queue: Math.max(0, (current.system.review_queue ?? 1) - 1) },
-    }));
+    setSnapshot((current) => {
+      const was = current.leads.find((lead) => lead.id === id)?.stage ?? 'attention';
+      const stage = stageAfter(choice, was);
+      return {
+        ...current,
+        leads: current.leads.map((lead) => lead.id === id ? { ...lead, stage, needs_review: false, review_reason: null, review: null } : lead),
+        // A booked lead's card closing leaves it in Booked: no column count changes.
+        counts: was === stage ? current.counts : { ...current.counts, [was]: Math.max(0, current.counts[was] - 1), [stage]: current.counts[stage] + 1 },
+        system: { ...current.system, review_queue: Math.max(0, (current.system.review_queue ?? 1) - 1) },
+      };
+    });
   }
 
   function publishTemplate(id: string, body: string, name: string) {
@@ -631,7 +635,7 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
 }
 
 function ReviewPage({ snapshot, action, onResolved, loading }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string, choice: ReviewChoice) => void; loading: boolean }) {
-  const flagged = snapshot.leads.filter((lead) => lead.stage === 'attention');
+  const flagged = snapshot.leads.filter(inReviewQueue);
   const [group, setGroup] = useState<ReviewGroup | 'all'>('all');
   const leads = filterReviews(flagged, group);
   const counts = groupCounts(flagged);

@@ -62,7 +62,7 @@ export function ResolveDialog({ leadId, choice, action, onClose, onResolved }: {
     setRefused('');
     // With another review still open the lead stays paused; say so instead of "Outreach continues".
     const more = option?.next_step.includes('next open review');
-    const result = await action(`review/${leadId}/resolve`, 'POST', { choice, note: note.trim() || undefined }, more ? 'Saved. The next open review for this lead is shown now.' : RESOLVED_MESSAGE[choice], setRefused);
+    const result = await action(`review/${leadId}/resolve`, 'POST', { choice, note: note.trim() || undefined }, more ? 'Saved. The next open review for this lead is shown now.' : option?.done || RESOLVED_MESSAGE[choice], setRefused);
     setSaving(false);
     if (result) { onResolved?.(choice); onClose(); }
   }

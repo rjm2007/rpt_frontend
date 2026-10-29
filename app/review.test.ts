@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { choiceLabel, CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, RESOLVED_MESSAGE, resolveRefusal, REVIEW_GROUPS, reviewOf, stageAfter } from './review.ts';
+import { choiceLabel, CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, inReviewQueue, RESOLVED_MESSAGE, resolveRefusal, REVIEW_GROUPS, reviewOf, stageAfter } from './review.ts';
 import type { Review } from './dashboard-data.ts';
 
 const textReview: Review = {
@@ -79,4 +79,16 @@ test('a refused choice is said in the pop-up', () => {
 test('choice labels keep "Day 0" together on one line', () => {
   assert.equal(choiceLabel('Use new date of birth & restart from Day 0'), 'Use new date of birth & restart from Day\u00a00');
   assert.equal(choiceLabel('Front desk will handle it'), 'Front desk will handle it');
+});
+
+test('a case change card: booked by front desk books, a booked lead stays booked and is in the queue', () => {
+  // 2026-10-29: the patient asked for a different case than the referral.
+  assert.equal(stageAfter('booked_by_front_desk'), 'booked');
+  assert.equal(stageAfter('front_desk', 'booked'), 'booked');
+  assert.equal(stageAfter('front_desk', 'attention'), 'closed');
+  assert.equal(stageAfter('continue', 'attention'), 'cadence');
+  assert.match(RESOLVED_MESSAGE.booked_by_front_desk, /booked by front desk/);
+  assert.equal(inReviewQueue({ stage: 'booked', needs_review: true }), true);
+  assert.equal(inReviewQueue({ stage: 'booked', needs_review: false }), false);
+  assert.equal(inReviewQueue({ stage: 'attention', needs_review: false }), true);
 });

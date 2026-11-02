@@ -53,9 +53,42 @@ export function formatPhone(value: unknown) {
   return us ? `(${us.slice(0, 3)}) ${us.slice(3, 6)}-${us.slice(6)}` : raw;
 }
 
+// US zones read as people say them; anything else falls back to the IANA name in words.
+const US_ZONES: Record<string, string> = {
+  'America/Los_Angeles': 'Pacific Time (PT)', 'America/Denver': 'Mountain Time (MT)', 'America/Phoenix': 'Arizona Time (MT)',
+  'America/Chicago': 'Central Time (CT)', 'America/New_York': 'Eastern Time (ET)', 'Pacific/Honolulu': 'Hawaii Time (HT)',
+  'America/Anchorage': 'Alaska Time (AKT)',
+};
 export function timezoneLabel(value: unknown) {
   const raw = String(value ?? '').trim();
-  return raw ? raw.replace(/[\/_-]+/g, ' ').replace(/\s+/g, ' ') : 'Not recorded';
+  if (!raw) return 'Not recorded';
+  return US_ZONES[raw] ?? raw.replace(/[\/_-]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+// A date of birth (YYYY-MM-DD) as "Jan 21, 2007", read as a calendar date (no time zone shift).
+export function birthDateLabel(value: unknown) {
+  const raw = String(value ?? '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return raw || 'Not recorded';
+  const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(parsed.valueOf())) return raw;
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+// Activity titles come from the backend as "Call: booked" / "Start cadence: cadence started":
+// capitalise the result, and drop a result that only repeats the action.
+export function activityTitle(title: string) {
+  const match = title.match(/^([^:]+):\s*(.+)$/);
+  if (!match) return title;
+  const [, head, tail] = match;
+  const words = (text: string) => text.toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(Boolean);
+  const headWords = words(head);
+  const tailWords = words(tail);
+  // "Start cadence: cadence started" -> "Cadence started"
+  if (tailWords.length && tailWords.some((word) => headWords.includes(word)) && /started|stopped|paused|resumed|created|deleted/.test(tail.toLowerCase())) {
+    return tail.replace(/^\w/, (letter) => letter.toUpperCase());
+  }
+  return `${head}: ${tail.replace(/^\w/, (letter) => letter.toUpperCase())}`;
 }
 
 export type StatusTone = 'success' | 'warning' | 'error' | 'neutral';

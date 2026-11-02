@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel, formatPhone, leadSourceLabel } from './display.ts';
+import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel, formatPhone, leadSourceLabel, birthDateLabel, activityTitle } from './display.ts';
 import type { ActivityEntry } from './dashboard-data';
 
 test('activity shows every entry, staff and automated, and search narrows it', () => {
@@ -36,7 +36,9 @@ test('activity names the kind of source under who made it', () => {
 test('normalizes machine values without changing stored data', () => {
   for (const value of ['google_sheets', 'google-sheet', 'n8n_sheet', 'n8n_sheets', 'N8N Sheets']) assert.equal(sourceLabel(value), 'Google Sheets');
   assert.equal(displayEnum('customer_did-not-answer'), 'Customer did not answer');
-  assert.equal(timezoneLabel('America/Los_Angeles'), 'America Los Angeles');
+  assert.equal(timezoneLabel('America/Los_Angeles'), 'Pacific Time (PT)');
+  assert.equal(timezoneLabel('Europe/Paris'), 'Europe Paris');
+  assert.equal(timezoneLabel(''), 'Not recorded');
 });
 
 test('selects semantic activity icons and status tones', () => {
@@ -141,4 +143,15 @@ test('phone numbers show in full, formatted', () => {
   assert.equal(formatPhone('5550001234'), '(555) 000-1234');
   assert.equal(formatPhone('+445550001234'), '+445550001234');
   assert.equal(formatPhone(null), '—');
+});
+
+test('dates of birth read as calendar dates and activity titles are sentence case', () => {
+  assert.equal(birthDateLabel('2007-01-21'), 'Jan 21, 2007');
+  assert.equal(birthDateLabel('1990-03-14T00:00:00'), 'Mar 14, 1990');
+  assert.equal(birthDateLabel('someday'), 'someday');
+  assert.equal(birthDateLabel(null), 'Not recorded');
+  assert.equal(activityTitle('Call: booked'), 'Call: Booked');
+  assert.equal(activityTitle('Call: no answer'), 'Call: No answer');
+  assert.equal(activityTitle('Start cadence: cadence started'), 'Cadence started');
+  assert.equal(activityTitle('Lead created'), 'Lead created');
 });

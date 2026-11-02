@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { choiceLabel, CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, inReviewQueue, RESOLVED_MESSAGE, resolveRefusal, REVIEW_GROUPS, reviewOf, stageAfter } from './review.ts';
+import { choiceLabel, choiceTone, confirmLabel, reviewAge, CLOSED_REVIEW_FALLBACK, closedReviewMessage, filterReviews, groupCounts, inReviewQueue, RESOLVED_MESSAGE, resolveRefusal, REVIEW_GROUPS, reviewOf, stageAfter } from './review.ts';
 import type { Review } from './dashboard-data.ts';
 
 const textReview: Review = {
@@ -91,4 +91,36 @@ test('a case change card: booked by front desk books, a booked lead stays booked
   assert.equal(inReviewQueue({ stage: 'booked', needs_review: true }), true);
   assert.equal(inReviewQueue({ stage: 'booked', needs_review: false }), false);
   assert.equal(inReviewQueue({ stage: 'attention', needs_review: false }), true);
+});
+
+test('choices that close the lead for a wrong person or number are red, the suggested one is the main button', () => {
+  assert.equal(choiceTone('wrong_number', 1), 'danger');
+  assert.equal(choiceTone('different_person', 0), 'danger');
+  assert.equal(choiceTone('close_phone_changed', 2), 'danger');
+  assert.equal(choiceTone('number_ok', 0), 'primary');
+  assert.equal(choiceTone('continue', 2), 'neutral');
+  assert.equal(choiceTone('front_desk', 0), 'neutral');
+  assert.equal(choiceTone('restart_cadence', 0), 'neutral');
+  assert.equal(choiceTone('send_booking_link', 0), 'neutral');
+});
+
+test('the confirm button names what the choice does', () => {
+  assert.equal(confirmLabel('wrong_number'), 'Close lead');
+  assert.equal(confirmLabel('front_desk'), 'Close lead');
+  assert.equal(confirmLabel('number_ok'), 'Continue outreach');
+  assert.equal(confirmLabel('restart_cadence'), 'Restart from Day\u00a00');
+  assert.equal(confirmLabel('booked_by_front_desk'), 'Mark as booked');
+  assert.equal(confirmLabel('calls_only'), 'Turn texts off');
+  assert.equal(confirmLabel('continue'), 'Continue outreach');
+  assert.equal(confirmLabel('send_booking_link'), 'Send booking link');
+});
+
+test('review age reads in minutes, hours, then days', () => {
+  const now = new Date('2026-11-02T12:00:00Z');
+  assert.equal(reviewAge(null, now), '');
+  assert.equal(reviewAge('nonsense', now), '');
+  assert.equal(reviewAge('2026-11-02T11:59:40Z', now), 'just now');
+  assert.equal(reviewAge('2026-11-02T11:48:00Z', now), '12 min');
+  assert.equal(reviewAge('2026-11-02T09:00:00Z', now), '3 h');
+  assert.equal(reviewAge('2026-10-29T12:00:00Z', now), '4 d');
 });

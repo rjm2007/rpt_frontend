@@ -194,7 +194,7 @@ export function AssistantChat({ chat, leads, currentPath, onChange, compact = fa
     {header}
     <div className="assistant-leads" aria-label="Loaded leads">
       {loaded.map((lead) => <span className="assistant-lead" key={lead.id}><Link href={`/leads/${lead.id}`} target={compact ? undefined : '_blank'}>{lead.full_name}</Link><button type="button" aria-label={`Remove ${lead.full_name}`} onClick={() => removeLead(lead.id)}><ControlIcon name="close" /></button></span>)}
-      {!full && <span className="assistant-dropzone">{over ? 'Drop to load this lead' : loaded.length ? `Drag another lead here (${loaded.length} of ${MAX_LEADS})` : 'Drag a lead card here to ask about it'}</span>}
+      {!full && <span className="assistant-dropzone">{over ? 'Drop to load this lead' : !compact ? (loaded.length ? `Add another lead above (${loaded.length} of ${MAX_LEADS})` : 'Add a lead above to ask about it') : loaded.length ? `Drag another lead here (${loaded.length} of ${MAX_LEADS})` : 'Drag a lead card here to ask about it'}</span>}
     </div>
     <div className="assistant-messages" ref={scroller}>
       {!chat.messages.length && <div className="assistant-empty">
@@ -210,7 +210,7 @@ export function AssistantChat({ chat, leads, currentPath, onChange, compact = fa
       <label className="sr-only" htmlFor={`assistant-input-${chat.id}`}>Message the Outreach Assistant</label><textarea id={`assistant-input-${chat.id}`} value={draft} rows={1} maxLength={4000} placeholder={chat.leadIds.length ? 'Ask about this lead…' : 'Ask how the dashboard works, or drag a lead in…'} onChange={(event) => setDraft(event.target.value)} onKeyDown={key} disabled={busy} />
       {busy ? <button type="button" className="assistant-send" aria-label="Stop response" onClick={() => abort.current?.abort()}><ControlIcon name="stop" /></button> : <button type="submit" className="assistant-send" aria-label="Send message" disabled={!draft.trim()}><ControlIcon name="send" /></button>}
     </form>
-    <p className="assistant-foot">Read-only. Answers come from this lead&rsquo;s records; nothing is changed or sent.</p>
+    <p className="assistant-foot">{chat.leadIds.length ? <>Read-only. Answers come from {chat.leadIds.length > 1 ? 'these leads\u2019' : 'this lead\u2019s'} records; nothing is changed or sent.</> : 'Read-only. Nothing is changed or sent.'}</p>
   </div>;
 }
 
@@ -280,8 +280,8 @@ export function AssistantPage({ leads, initialChatId }: { leads: Lead[]; initial
   function remove(id: string) { setChats((current) => { const remaining = current.filter((chat) => chat.id !== id); const list = remaining.length ? remaining : [newChat()]; saveChats(list); if (id === activeId) setActiveId(list[0].id); return list; }); }
   const matches = search.trim() ? leads.filter((lead) => lead.full_name.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
   if (!active) return null;
-  return <div className="assistant-page">
-    <h1 className="sr-only">Outreach Assistant</h1>
+  return <><header className="page-heading"><div><h1>Outreach Assistant</h1><p>Ask about a lead or how the dashboard works. Read-only: nothing is changed or sent.</p></div></header>
+  <div className="assistant-page">
     <aside className="assistant-history">
       <button type="button" className="primary icon-label" onClick={create}><ControlIcon name="plus" />New chat</button>
       <div className="assistant-history-list">{chats.map((chat) => <div className={`assistant-history-item ${chat.id === activeId ? 'selected' : ''}`} key={chat.id}><button type="button" aria-pressed={chat.id === activeId} onClick={() => setActiveId(chat.id)}><strong>{chat.title}</strong><small>{chat.leadIds.length ? `${chat.leadIds.length} lead${chat.leadIds.length > 1 ? 's' : ''} · ` : ''}{new Date(chat.updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small></button><button type="button" aria-label={`Delete ${chat.title}`} onClick={() => remove(chat.id)}><ControlIcon name="close" /></button></div>)}</div>
@@ -291,9 +291,9 @@ export function AssistantPage({ leads, initialChatId }: { leads: Lead[]; initial
         <label className="sr-only" htmlFor="assistant-lead-search">Add a lead to this chat</label><input id="assistant-lead-search" value={search} placeholder={active.leadIds.length >= MAX_LEADS ? `Up to ${MAX_LEADS} leads per chat` : 'Add a lead by name…'} disabled={active.leadIds.length >= MAX_LEADS} onChange={(event) => setSearch(event.target.value)} />
         {matches.length > 0 && <div className="assistant-picker-results">{matches.map((lead) => <button type="button" key={lead.id} disabled={active.leadIds.includes(lead.id)} onClick={() => { update(touch(active, { leadIds: [...active.leadIds, lead.id] })); setSearch(''); }}><strong>{lead.full_name}</strong><small>{lead.location ?? ''} · {displayEnum(lead.status)}</small></button>)}</div>}
       </div>
-      <AssistantChat chat={active} leads={leads} currentPath="/assistant" onChange={update} header={<div className="assistant-head"><span className="assistant-logo" aria-hidden="true"><SparkIcon /></span><div><strong>Outreach Assistant</strong><small>Reads live data · read-only</small></div></div>} />
+      <AssistantChat chat={active} leads={leads} currentPath="/assistant" onChange={update} header={<div className="assistant-head"><span className="assistant-logo" aria-hidden="true"><SparkIcon /></span><div><strong>{active.title}</strong><small>Reads live data · read-only</small></div></div>} />
     </section>
-  </div>;
+  </div></>;
 }
 
 export function ThemeToggle() {

@@ -62,6 +62,42 @@ export function stageAfter(choice: ReviewChoice, current?: LeadStage): 'closed' 
   return CLOSING.has(choice) ? 'closed' : 'cadence';
 }
 
+// How a choice reads in the card: the backend's suggested way forward is the main one, choices that
+// close the lead for a wrong person or number are red, and the rest (front desk, booking link,
+// restarts) are plain. Before this every choice was the same solid blue bar (2026-11-02).
+export type ChoiceTone = 'primary' | 'neutral' | 'danger';
+const DESTRUCTIVE: ReadonlySet<ReviewChoice> = new Set(['different_person', 'wrong_number', 'close_phone_changed']);
+export function choiceTone(choice: ReviewChoice, index = 0): ChoiceTone {
+  if (DESTRUCTIVE.has(choice)) return 'danger';
+  if (choice === 'front_desk' || choice === 'send_booking_link' || RESTARTING.has(choice)) return 'neutral';
+  return index === 0 ? 'primary' : 'neutral';
+}
+
+// The confirm button names the action instead of a generic "Confirm".
+export function confirmLabel(choice: ReviewChoice): string {
+  if (DESTRUCTIVE.has(choice) || choice === 'front_desk') return 'Close lead';
+  if (choice === 'booked_by_front_desk') return 'Mark as booked';
+  if (choice === 'send_booking_link') return 'Send booking link';
+  if (RESTARTING.has(choice)) return 'Restart from Day\u00a00';
+  if (choice === 'use_new_name') return 'Save name and continue';
+  if (choice === 'calls_only') return 'Turn texts off';
+  if (choice === 'retry_texts') return 'Send the text again';
+  return 'Continue outreach';
+}
+
+// How long a review has been open, for the queue rows ("12 min", "3 h", "4 d").
+export function reviewAge(value: string | null | undefined, now = new Date()): string {
+  if (!value) return '';
+  const then = new Date(value).valueOf();
+  if (Number.isNaN(then)) return '';
+  const minutes = Math.max(0, Math.floor((now.valueOf() - then) / 60000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  return `${Math.floor(hours / 24)} d`;
+}
+
 // Choice labels keep "Day 0" (any "Day N") on one line: a non-breaking space between the words.
 export function choiceLabel(label: string): string {
   return label.replace(/\bDay (\d+)/g, 'Day\u00a0$1');

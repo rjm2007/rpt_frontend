@@ -605,6 +605,38 @@ function CalendarLegend({
   );
 }
 
+// Calendar responses by "start:end:lead", shared by the Appointments page and Analytics: a period
+// seen before shows at once (then refreshes in the background) instead of the skeleton again.
+const calendarCache = new Map<string, CalendarData>();
+const CALENDAR_CACHE_LIMIT = 24;
+export function cachedCalendar(key: string) {
+  return calendarCache.get(key) ?? null;
+}
+export async function loadCalendar(key: string, signal?: AbortSignal) {
+  const [start, end, lead] = key.split(":");
+  const response = await dashboardFetch(
+    `/api/dashboard/appointment-calendar?start=${start}&end=${end}${lead ? `&lead_id=${lead}` : ""}`,
+    { signal },
+  );
+  const result = (await response.json()) as CalendarData & { detail?: string };
+  if (!response.ok)
+    throw new Error(
+      clientErrorMessage(
+        result.detail,
+        "The calendar could not be loaded. Please try again.",
+      ),
+    );
+  calendarCache.delete(key);
+  calendarCache.set(key, result);
+  if (calendarCache.size > CALENDAR_CACHE_LIMIT)
+    calendarCache.delete(calendarCache.keys().next().value as string);
+  return result;
+}
+function calendarKey(day: string, view: CalendarView, leadId?: string) {
+  const days = calendarDays(day, view);
+  return `${days[0]}:${days[days.length - 1]}:${leadId ?? ""}`;
+}
+
 export function AppointmentsPage({
   snapshot,
   location,
@@ -670,33 +702,28 @@ export function AppointmentsPage({
     (isCalendarDay(linkedDay) ? linkedDay : initialDay) ||
     calendarDay(undefined, timezone);
   const days = calendarDays(day, view);
-  const key = `${days[0]}:${days[days.length - 1]}:${leadId ?? ""}`;
-  const data = loaded?.key === key ? loaded.data : null;
+  const key = calendarKey(day, view, leadId);
+  const data = loaded?.key === key ? loaded.data : cachedCalendar(key);
   const error = failure?.key === key ? failure.message : "";
   const loading = !data && !error;
 
   useEffect(() => {
     const controller = new AbortController();
-    const [start, end, lead] = key.split(":");
+    let prefetched = false;
     async function refresh() {
       try {
-        const response = await dashboardFetch(
-          `/api/dashboard/appointment-calendar?start=${start}&end=${end}${lead ? `&lead_id=${lead}` : ""}`,
-          { signal: controller.signal },
-        );
-        const result = (await response.json()) as CalendarData & {
-          detail?: string;
-        };
-        if (!response.ok)
-          throw new Error(
-            clientErrorMessage(
-              result.detail,
-              "The calendar could not be loaded. Please try again.",
-            ),
-          );
+        const result = await loadCalendar(key, controller.signal);
         if (!controller.signal.aborted) {
           setLoaded({ key, data: result });
           setFailure(null);
+        }
+        // Once per period: load the previous and next one, so Previous / Next open without a wait.
+        if (!prefetched && !controller.signal.aborted) {
+          prefetched = true;
+          for (const offset of [-1, 1]) {
+            const near = calendarKey(moveCalendarDate(day, view, offset), view, leadId);
+            if (!cachedCalendar(near)) void loadCalendar(near).catch(() => undefined);
+          }
         }
       } catch (e) {
         if (!controller.signal.aborted)
@@ -722,6 +749,8 @@ export function AppointmentsPage({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", visible);
     };
+    // day / view / leadId only feed the prefetch; key already changes with the period.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, reload]);
 
   const place = calendarLocation || location;
@@ -906,7 +935,7 @@ export function AppointmentsPage({
           ) : (
             <h1>Appointments</h1>
           )}
-          <p>Your clinic schedule, connected to Stride.</p>
+          <p>{leadId ? "This lead’s visits from Stride." : "Your clinic schedule, connected to Stride."}</p>
         </div>
         <div className="page-tools">
           <div

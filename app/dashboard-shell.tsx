@@ -10,6 +10,7 @@ import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRun
 import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadBoardPage, LeadDetail, LeadListPage, LeadStage, NumberBlock, Snapshot, StaffMember, StridePatientView } from './dashboard-data';
 import { activeFilterCount, ALL_OWNERS, BOARD_BATCH, createdByDay, LIST_BATCH, LIST_STATE_KEY, leadBoardUrl, leadListUrl, listSubtitle, NO_FILTERS, PAGE_SIZES, pageCount, pageRows, readListState, refreshPlan, replaceColumns, shouldLoadMore, SOURCE_LABELS, type LeadFilters, type LeadSource, type ListState } from './lead-list';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
+import { SmsAgentTestPage } from './sms-agent-test';
 import { ActivityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, formatPhone, leadSourceLabel, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, leadActivity, activitySource, activityTitle, birthDateLabel, timezoneLabel } from './display';
 import type { StaffUser } from './session';
 import { dashboardFetch } from './dashboard-client';
@@ -390,11 +391,14 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
         </header>
         <main className="content" id="main-content" tabIndex={-1}>{unavailable && !canShowData ? <OfflineState onRetry={retryConnection} /> : <>{unavailable && <div className="connection-notice" role="alert"><p><strong>Updates paused.</strong> You’re viewing the last loaded data. Reconnect before making changes.</p><button className="secondary" type="button" onClick={retryConnection}>Retry connection</button></div>}{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), search.get('owner'), search.get('chat'), visibleSnapshot, connection === 'loading', detail, router, action, resolveLeadReview, publishTemplate, user.role, staff, user.userId)}</>}</main>
       </div>
-      {pathname !== '/assistant' && <AssistantDock leads={snapshot.leads} currentPath={pathname} currentLeadId={leadId} />}
+      {pathname !== '/assistant' && pathname !== SMS_AGENT_TEST_PATH && <AssistantDock leads={snapshot.leads} currentPath={pathname} currentLeadId={leadId} />}
       {notice && <div className={`toast ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}><b aria-hidden="true">{notice.tone === 'error' ? '!' : '✓'}</b><span>{notice.message}</span><button type="button" aria-label="Dismiss message" onClick={() => setNotice(null)}>×</button></div>}
     </div>
   );
 }
+
+// The SMS agent sandbox chat (sms-agent-test.tsx); its floating assistant button would cover the Send button.
+const SMS_AGENT_TEST_PATH = '/administration/sms-agent-test';
 
 function renderPage(path: string, view: string | null, query: string | null, stage: string | null, owner: string | null, chatId: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, onReviewResolved: (id: string, choice: ReviewChoice) => void, onTemplatePublished: (id: string, body: string, name: string) => void, role: StaffUser['role'], staff: StaffMember[], userId = '') {
   const requestedLeadId = path.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
@@ -409,6 +413,8 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/appointments') return <AppointmentsPage userId={userId} snapshot={snapshot} location={snapshot.calendar_location ?? "All Locations"} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} loading={loading} role={role} />;
   if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} loading={loading} />;
+  // Before the admin gate: the backend lets any signed-in staff member use the sandbox (docs/SMS_AGENT.md).
+  if (path === SMS_AGENT_TEST_PATH) return <SmsAgentTestPage />;
   if (path.startsWith('/administration') && role !== 'super_admin') return <Empty title="Administrator access required" body="Team members can manage every lead, while organization-wide settings stay protected." />;
   if (path === '/administration') return <AdministrationPage snapshot={snapshot} action={action} />;
   if (path === '/administration/cadence') return <GlobalCadencePage snapshot={snapshot} action={action} loading={loading} />;
@@ -941,6 +947,7 @@ function AdministrationPage({ snapshot, action }: { snapshot: Snapshot; action: 
   const cards = [
     ['/administration/cadence','CD','Global Cadence Studio','Edit the outreach sequence for future execution.'],
     ['/administration/templates','SM','SMS Template Studio','Manage reusable SMS templates and global cadence messages.'],
+    [SMS_AGENT_TEST_PATH,'ST','SMS agent test','Chat with Elliot by text as a test patient. Nothing is sent or saved.'],
     ['/appointments','BK','Appointments Calendar','See booked visits, clinic hours and capacity.'],
     ['/review','RV','Review & Reconciliation','Resolve uncertain outreach results before trying again.'],
     ['/analytics','AU','Audit & Reporting','Monitor activity, delivery, and operational results.'],

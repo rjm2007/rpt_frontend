@@ -6,7 +6,7 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 // Every backend route the browser may reach, listed explicitly. A path missing
 // from here is rejected with "dashboard path not allowed", so this must be
 // updated whenever a new dashboard endpoint is added.
-const ALLOWED_PATH = /^(snapshot|lead-list|lead-board|stride-patients\/\d+|blocked-numbers(?:\/unblock)?|keap-sync|appointment-calendar|appointment-slots|appointment-approvals|appointments|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|contact-rules|stage|sms|outreach-events\/\d+))?)?|review\/[0-9a-f-]+(?:\/resolve)?|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?)$/i;
+const ALLOWED_PATH = /^(snapshot|lead-list|lead-board|stride-patients\/\d+|blocked-numbers(?:\/unblock)?|keap-sync|appointment-calendar|appointment-slots|appointment-approvals|appointments|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|contact-rules|stage|sms|outreach-events\/\d+))?)?|review\/[0-9a-f-]+(?:\/resolve)?|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?|sms-agent-test\/(?:reply|options))$/i;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   if (!ALLOWED_METHODS.has(request.method)) {
@@ -39,6 +39,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   if (/^(lead-list|lead-board|stride-patients\/\d+)$/.test(relativePath) && request.method !== 'GET') {
     return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
   }
+  // SMS agent test chat: a sandbox that writes nothing; options is read-only, reply is POST only.
+  if ((/^sms-agent-test\/options$/i.test(relativePath) && request.method !== 'GET')
+      || (/^sms-agent-test\/reply$/i.test(relativePath) && request.method !== 'POST')) {
+    return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
+  }
   if (relativePath === 'keap-sync' && request.method !== 'GET') {
     return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
   }
@@ -60,8 +65,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   }
 
   const length = Number(request.headers.get('content-length') ?? 0);
-  // The assistant carries up to 20k characters of conversation; the backend caps it there too.
-  if (length > (relativePath.startsWith('assistant') ? 64_000 : 20_000)) {
+  // The assistant carries up to 20k characters of conversation and a test chat up to 40k (60 texts);
+  // the backend caps both there too, so this only stops oversized bodies early.
+  const maxBody = relativePath.startsWith('assistant') ? 64_000
+    : /^sms-agent-test\//i.test(relativePath) ? 128_000 : 20_000;
+  if (length > maxBody) {
     return NextResponse.json({ detail: 'request too large' }, { status: 413 });
   }
 
@@ -71,7 +79,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     response = await fetch(`${origin}/api/v1/dashboard/${relativePath}${request.nextUrl.search}`, {
       method: request.method,
       cache: 'no-store',
-      signal: AbortSignal.timeout(relativePath.startsWith('assistant') ? 90_000 : relativePath === 'appointments' ? 35_000 : 20_000),
+      // The SMS agent's model run can take up to SMS_AGENT_TIMEOUT_SECONDS (20 s default, 120 s max).
+      signal: AbortSignal.timeout(relativePath.startsWith('assistant') || /^sms-agent-test\//i.test(relativePath) ? 90_000 : relativePath === 'appointments' ? 35_000 : 20_000),
       headers: {
         'Content-Type': 'application/json',
         'X-Dashboard-Token': token,

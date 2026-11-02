@@ -1,0 +1,120 @@
+/* SMS agent test page (sms-agent-test.tsx). Uses the dashboard's tokens from globals.css. */
+.page { --bubble-mine: #0b84ff; --bubble-mine-ink: #fff; --bubble-theirs: #e9e9eb; --bubble-theirs-ink: #101828; }
+:global([data-theme="dark"]) .page { --bubble-theirs: #26324a; --bubble-theirs-ink: #e6ebf4; }
+
+.muted { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.noteBody { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; justify-content: space-between; width: 100%; }
+.noteBody :global(.secondary) { min-height: 34px; padding: 0 12px; }
+
+/* Three panes: chat list | phone | what Elliot did. The shell hides the floating assistant button on this page. */
+.layout { display: grid; grid-template-columns: 270px minmax(0, 1fr) 290px; gap: 18px; align-items: start; }
+@media (max-width: 1240px) { .layout { grid-template-columns: 250px minmax(0, 1fr); } .actions { grid-column: 2; } }
+
+.list, .phone, .actions { border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: var(--shadow-sm); min-width: 0; }
+
+/* Chat list, like a phone's Messages app */
+.list { padding: 12px; display: grid; gap: 10px; align-content: start; max-height: min(78vh, 860px); overflow-y: auto; }
+.listHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.listHead h2 { margin: 0; font-size: 16px; font-weight: 680; }
+.listHead :global(.primary) { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.list li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-radius: 9px; }
+.list li:hover { background: var(--surface); }
+.list li.selected { background: var(--soft-blue); }
+.chatButton { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 9px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; }
+.chatText { min-width: 0; display: grid; gap: 2px; }
+.chatText strong { font-size: 13.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chatText small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chatButton time { align-self: start; font-size: 11px; color: var(--muted); padding-top: 2px; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(180deg, #a3acba, #858e9c); color: #fff; font-weight: 700; font-size: 14px; flex: 0 0 auto; }
+.rowTools { display: flex; gap: 2px; padding-right: 4px; opacity: 0; }
+.list li:hover .rowTools, .list li:focus-within .rowTools, .list li.selected .rowTools { opacity: 1; }
+.rowTools button { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); display: grid; place-items: center; padding: 0; }
+.rowTools button:hover { color: var(--ink); background: var(--paper-2, var(--surface)); }
+.rename { padding: 6px 8px; }
+.rename input { width: 100%; height: 34px; border: 1px solid var(--blue); border-radius: 7px; padding: 0 10px; background: var(--paper); color: var(--ink); font-size: 13.5px; }
+.foot { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); text-align: center; }
+
+/* Phone */
+.phone { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: min(78vh, 860px); min-height: 460px; overflow: hidden; }
+.phoneHead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--paper); flex-wrap: wrap; }
+.back { display: none; align-items: center; gap: 2px; border: 0; background: transparent; color: var(--blue); font-size: 14px; font-weight: 600; padding: 4px 2px; }
+.contact { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 220px; }
+.contact > div { min-width: 0; display: grid; }
+.contact strong { font-size: 14px; }
+.contact small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.contact .avatar { background: linear-gradient(180deg, #4f8df5, var(--blue)); }
+.headTools { display: flex; gap: 8px; margin-left: auto; }
+.headTools :global(.secondary) { min-height: 34px; padding: 0 12px; font-size: 13px; }
+
+.messages { overflow-y: auto; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 0; min-height: 0; }
+.row { display: flex; flex-direction: column; }
+.hint { margin: auto; max-width: 320px; text-align: center; color: var(--muted); font-size: 13.5px; }
+.stamp { margin: 14px 0 6px; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.bubble { max-width: min(78%, 420px); margin-top: 8px; padding: 8px 13px; border-radius: 18px; font-size: 15px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.joined { margin-top: 2px; }
+.mine { align-self: flex-end; background: var(--bubble-mine); color: var(--bubble-mine-ink); border-bottom-right-radius: 5px; }
+.theirs { align-self: flex-start; background: var(--bubble-theirs); color: var(--bubble-theirs-ink); border-bottom-left-radius: 5px; }
+.mine.joined { border-top-right-radius: 6px; }
+.theirs.joined { border-top-left-radius: 6px; }
+.meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); align-self: flex-start; }
+.quiet { margin: 10px auto 0; padding: 4px 10px; border-radius: 99px; background: var(--surface); color: var(--muted); font-size: 12px; text-align: center; }
+.typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: #8e8e93; animation: sms-typing 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; }
+.typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes sms-typing { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; } }
+.failure { margin: 10px 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; color: var(--error-ink); font-size: 12.5px; text-align: right; }
+.failure :global(.secondary) { min-height: 30px; padding: 0 10px; font-size: 12.5px; }
+
+.composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--paper); }
+.composer textarea { resize: none; min-height: 38px; max-height: 120px; border: 1px solid var(--line); border-radius: 19px; padding: 8px 14px; font-size: 15px; line-height: 1.35; background: var(--paper); color: var(--ink); field-sizing: content; }
+.composer textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px #0b50d01f; }
+.send { width: 36px; height: 36px; margin-bottom: 1px; border: 0; border-radius: 50%; background: var(--bubble-mine); color: #fff; display: grid; place-items: center; padding: 0; }
+.send:disabled { opacity: .4; cursor: default; }
+
+.empty { display: grid; place-items: center; align-content: center; gap: 12px; padding: 24px; color: var(--muted); grid-row: 1 / -1; }
+
+/* New chat form (inside the phone pane) */
+.setupScroll { overflow-y: auto; min-height: 0; grid-row: 2 / -1; }
+.setup { display: grid; gap: 16px; padding: 18px 20px 22px; }
+.setup h2 { margin: 0; font-size: 18px; font-weight: 680; }
+.segment { display: inline-flex; flex-wrap: wrap; gap: 0; margin: 0; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); justify-self: start; }
+.segment legend { float: left; width: 100%; margin-bottom: 8px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
+.segment label { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.segment label input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.segment label:focus-within { outline: 3px solid var(--accent-ink); outline-offset: 1px; }
+.segment .segmentOn { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-sm); }
+.problems { margin: 0; padding: 10px 14px 10px 30px; border: 1px solid #f5b5ae; border-radius: 8px; background: #fef3f2; color: #b42318; font-size: 13px; }
+:global([data-theme="dark"]) .problems { background: #3a1a17; border-color: #6b2a24; color: #f3887e; }
+.setupButtons { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* What Elliot did */
+.actions { padding: 12px 14px 14px; max-height: min(78vh, 860px); overflow-y: auto; }
+.actions summary { font-size: 15px; font-weight: 680; cursor: pointer; padding: 2px 0 8px; }
+.actions ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.actions li { display: grid; gap: 3px; padding: 9px 11px; border: 1px solid var(--line); border-left: 3px solid var(--indigo); border-radius: 8px; background: var(--surface); font-size: 13px; }
+.actions li strong { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.actions li code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--soft-blue); color: var(--accent-ink); }
+.actions li span { color: var(--ink-2); line-height: 1.4; overflow-wrap: anywhere; }
+.actions li small { color: var(--muted); font-size: 11px; }
+
+/* Phone width: one pane at a time, like Messages (list, or the open chat with a Back button). */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .actions { grid-column: auto; }
+  .back { display: inline-flex; }
+  .showChat .list { display: none; }
+  .showList .phone, .showList .actions { display: none; }
+  .list { max-height: none; }
+  .phone { height: calc(100dvh - 210px); min-height: 420px; }
+  .rowTools { opacity: 1; }
+  .headTools { width: 100%; margin-left: 0; }
+  .headTools :global(.secondary) { flex: 1; }
+}
+@media (max-width: 520px) {
+  .setup { padding: 14px; }
+  .setup :global(.form-grid) { grid-template-columns: minmax(0, 1fr); }
+  .bubble { max-width: 86%; }
+}

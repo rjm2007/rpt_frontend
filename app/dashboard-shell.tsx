@@ -887,7 +887,7 @@ function AppointmentAnalytics({ location }: { location: string }) {
       <SelectMenu ariaLabel="Filter appointment counts by practitioner" value={practitioner} onChange={setPractitioner} options={[{ value: 'all', label: 'All practitioners' }, ...practitioners.map(([id, name]) => ({ value: id, label: name }))]} />
     </div>
     {result?.month === month && result.error ? <Alert tone="warning">{result.error}</Alert> : !data ? <SkeletonRows rows={3} /> : <>
-      <div className="appointment-totals" role="group" aria-label={`Appointments in ${monthLabel}`}><div className="total"><b>{summary.total}</b><small>appointments</small></div>{STATUS_BUCKETS.map((b) => <div key={b.value}><b>{summary.status[b.value]}</b><small>{b.label.toLowerCase()}</small></div>)}</div>
+      <div className="appointment-totals" role="group" aria-label={`Appointments in ${monthLabel}`}><div className="total"><b>{summary.total}</b><small>{summary.total === 1 ? 'appointment' : 'appointments'}</small></div>{STATUS_BUCKETS.map((b) => <div key={b.value}><b>{summary.status[b.value]}</b><small>{b.label.toLowerCase()}</small></div>)}</div>
       {data.truncated && <Alert tone="warning">This month has more than 2,000 appointments; the counts cover the first 2,000.</Alert>}
       {summary.total === 0 ? <Empty title={`No appointments in ${monthLabel}`} body="Choose another month or clear the filters." /> : <div className="appointment-breakdown">
         <section><h3>By location</h3>{bars(summary.byLocation)}</section>

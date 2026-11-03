@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useId, useState } from 'react';
 import { ModalShell } from './dashboard-controls';
 import { dashboardGet } from './dashboard-client';
 import type { Review, ReviewChoice, ReviewPreview } from './dashboard-data';
@@ -51,10 +51,7 @@ const TONE_CLASS = { primary: 'is-primary', neutral: '', danger: 'is-danger' } a
 // What was flagged, why, the proof, then one row per choice with what it will do.
 // `leadId` (optional) lets the card load each choice's effect ahead of the confirm pop-up.
 export function ReviewCard({ review, onChoose, busy = false, compact = false, leadId, canUnblock = false, unblockHref }: { review: Review; onChoose?: (choice: ReviewChoice) => void; busy?: boolean; compact?: boolean; leadId?: string; canUnblock?: boolean; unblockHref?: string }) {
-  const { preview } = usePreview(onChoose && !compact ? leadId : undefined);
-  const effects = new Map((preview?.review?.id === review.id ? preview?.options ?? [] : []).map((item) => [item.choice, item.effect]));
   const age = reviewAge(review.flagged_at);
-  const labelId = `review-options-${review.id ?? review.code}`;
   return <div className="review-card">
     <header className="review-card-head">
       <div className="review-card-tags"><span className="status-pill review-group">{review.group_label}</span>{review.landline && <span className="status-pill plain">Landline</span>}<small title={flaggedOn(review.flagged_at)}>{age ? `Flagged ${age === 'just now' ? 'just now' : `${age} ago`}` : 'Flagged'} · {flaggedOn(review.flagged_at)}</small></div>
@@ -76,17 +73,25 @@ export function ReviewCard({ review, onChoose, busy = false, compact = false, le
       : unblockHref ? <>Unblock the number on the lead’s page (continue or start over). <Link className="text-action" href={unblockHref}>Open lead to unblock →</Link></>
       : 'Use Unblock number in the red banner on this page (continue or start over).'}</p>}
     {Boolean(review.also?.length) && <p className="review-note">{review.also!.length} more open on this lead: {review.also!.map((item) => item.title).join(', ')}. They are resolved one at a time, oldest first; the lead stays paused until the last one.</p>}
-    {onChoose && !compact && <div className="review-options" role="group" aria-labelledby={labelId}>
-      <h4 id={labelId}>What do you want to do?</h4>
-      {review.options.map((option, index) => {
-        const tone = choiceTone(option.choice, index);
-        const effect = effects.get(option.choice);
-        return <button key={option.choice} type="button" className={`review-choice ${TONE_CLASS[tone]}`} disabled={busy} onClick={() => onChoose(option.choice)}>
-          <strong>{choiceLabel(option.label)}</strong>
-          <span>{effect ? `${effect}.` : RESOLVED_MESSAGE[option.choice]}</span>
-        </button>;
-      })}</div>}
+    {onChoose && !compact && <ReviewChoices review={review} onChoose={onChoose} busy={busy} leadId={leadId} />}
   </div>;
+}
+
+// The choice rows on their own (Review Queue card, review pop-up, and the lead page's Needs review banner).
+export function ReviewChoices({ review, onChoose, busy = false, leadId }: { review: Review; onChoose: (choice: ReviewChoice) => void; busy?: boolean; leadId?: string }) {
+  const { preview } = usePreview(leadId);
+  const effects = new Map((preview?.review?.id === review.id ? preview?.options ?? [] : []).map((item) => [item.choice, item.effect]));
+  const labelId = `review-options-${useId()}`;
+  return <div className="review-options" role="group" aria-labelledby={labelId}>
+    <h4 id={labelId}>What do you want to do?</h4>
+    {review.options.map((option, index) => {
+      const tone = choiceTone(option.choice, index);
+      const effect = effects.get(option.choice);
+      return <button key={option.choice} type="button" className={`review-choice ${TONE_CLASS[tone]}`} disabled={busy} onClick={() => onChoose(option.choice)}>
+        <strong>{choiceLabel(option.label)}</strong>
+        <span>{effect ? `${effect}.` : RESOLVED_MESSAGE[option.choice]}</span>
+      </button>;
+    })}</div>;
 }
 
 // The confirm pop-up: what the choice does and the next step, from the backend, plus an optional note.

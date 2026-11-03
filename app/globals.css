@@ -436,6 +436,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .appointment-strip small { color: var(--muted); }
 .alert { border: 1px solid #cbdcf9; background: #f3f7ff; border-radius: var(--radius-control); padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px; color: var(--ink-2); line-height: 1.45; }
 .alert > b { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--blue); color: #fff; flex: 0 0 auto; }
+.alert > div { flex: 1 1 auto; min-width: 0; }
+.alert .review-options { margin-top: 12px; max-width: 760px; }
 .alert.warning { border-color: #f4cb91; background: #fff8eb; }
 .alert.warning > b { background: var(--amber); }
 .alert.success { border-color: #a9dfbd; background: #f0faf3; }

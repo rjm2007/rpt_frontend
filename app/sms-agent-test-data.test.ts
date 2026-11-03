@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   actionLabel, addPatientMessage, applyReply, chatRoom, continueChat, draftProblem, awaitingReply, chatPreview, chatTranscript, clockLabel, defaultSetup,
-  defaultTitle, errorDetail, MAX_CHATS, newChat, normalizeClock, parseOptions, parseReply, parseStoredChats,
+  defaultTitle, errorDetail, latestBirthday, MAX_CHATS, newChat, normalizeClock, parseOptions, parseReply, parseStoredChats,
   renameChat, replyErrorMessage, replyRequestFor, requestSetup, resetChat, sameSenderAsPrevious, serializeChats,
   setupProblems, setupSummary, showTimeAbove, STORAGE_KEY, visitLabel, type Chat, type Setup,
 } from './sms-agent-test-data.ts';
@@ -47,7 +47,10 @@ test('setup problems: first name for an existing lead, a real birthday, a chosen
   assert.deepEqual(setupProblems(existing()), []);
   assert.match(setupProblems(existing({ first_name: ' ' }))[0], /first name/);
   assert.match(setupProblems(existing({ date_of_birth: '1980-02-30' }))[0], /real date/);
-  assert.match(setupProblems(existing({ date_of_birth: '2999-01-01' }))[0], /future/);
+  assert.match(setupProblems(existing({ date_of_birth: '2999-01-01' }))[0], /at least 1 year ago/);
+  // Owner, 2026-11-03: at least a year back (a test lead born this year looped on "the year").
+  assert.match(setupProblems(existing({ date_of_birth: latestBirthday(new Date(Date.now() + 86_400_000)) }))[0], /at least 1 year ago/);
+  assert.deepEqual(setupProblems(existing({ date_of_birth: latestBirthday() })), []);
   assert.match(setupProblems(existing({ clock: null }), 'chosen')[0], /day and time/);
   assert.deepEqual(setupProblems(existing({ clock: '2026-11-08T21:30' }), 'chosen'), []);
   // A new person needs no lead details at all.
@@ -338,4 +341,9 @@ test('stored chats from before the new fields open with auto review and no visit
   const weird = parseStoredChats(JSON.stringify([{ ...chat, setup: { ...chat.setup, open_review: 'maybe', booked_visit: 'x' } }]));
   assert.equal(weird[0].setup.open_review, 'auto');
   assert.equal(weird[0].setup.booked_visit.at, '');
+});
+
+test('latest birthday is one year before today (Feb 29 falls back to Feb 28)', () => {
+  assert.equal(latestBirthday(new Date(2026, 10, 3)), '2025-11-03');
+  assert.equal(latestBirthday(new Date(2028, 1, 29)), '2027-02-28');
 });

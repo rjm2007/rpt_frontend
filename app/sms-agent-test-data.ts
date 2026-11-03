@@ -188,13 +188,23 @@ export function normalizeClock(value: string | null | undefined): string | null 
   return short;
 }
 
+// The latest birthday the setup accepts: one year before today (owner, 2026-11-03: a test lead born
+// this year could never be booked and Elliot looped asking for the year; the backend refuses it too).
+export function latestBirthday(today: Date = new Date()): string {
+  const year = today.getFullYear() - 1;
+  const month = today.getMonth() + 1;
+  // Feb 29 has no match a year back: Feb 28.
+  const day = realDate(year, month, today.getDate()) ? today.getDate() : 28;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 // Returns the problems in plain words; empty when the chat can start.
 export function setupProblems(setup: Setup, clockMode: 'now' | 'chosen' = setup.clock ? 'chosen' : 'now'): string[] {
   const problems: string[] = [];
   if (setup.who === 'existing') {
     if (!setup.first_name.trim()) problems.push('Enter a first name for the made-up lead.');
     if (setup.date_of_birth && !validDate(setup.date_of_birth)) problems.push('Birthday must be a real date.');
-    if (setup.date_of_birth && validDate(setup.date_of_birth) && setup.date_of_birth > new Date().toISOString().slice(0, 10)) problems.push('Birthday cannot be in the future.');
+    if (setup.date_of_birth && validDate(setup.date_of_birth) && setup.date_of_birth > latestBirthday()) problems.push('Birthday must be at least 1 year ago (a real patient’s date of birth).');
   }
   if (visitApplies(setup) && (setup.booked_visit.therapist.trim() || setup.booked_visit.clinic.trim()) && !normalizeClock(setup.booked_visit.at)) problems.push('Pick the booked visit’s day and time, or clear its therapist and clinic.');
   if (clockMode === 'chosen' && !normalizeClock(setup.clock)) problems.push('Pick a day and time for the clock, or choose Now.');

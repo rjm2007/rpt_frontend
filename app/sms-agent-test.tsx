@@ -9,7 +9,7 @@ import { dashboardFetch } from './dashboard-client';
 import styles from './sms-agent-test.module.css';
 import {
   actionLabel, addPatientMessage, applyReply, awaitingReply, chatPreview, chatRoom, chatTranscript, continueChat, defaultSetup,
-  draftProblem, EMPTY_OPTIONS, errorDetail, FRONT_DESK_LABELS, newChat, OPEN_REVIEW_LABELS, visitApplies, normalizeClock, OPTIONS_URL, parseOptions, parseReply,
+  draftProblem, EMPTY_OPTIONS, errorDetail, FRONT_DESK_LABELS, latestBirthday, newChat, OPEN_REVIEW_LABELS, visitApplies, normalizeClock, OPTIONS_URL, parseOptions, parseReply,
   parseStoredChats, renameChat, REPLY_URL, replyErrorMessage, replyRequestFor, resetChat, sameSenderAsPrevious,
   serializeChats, setupProblems, setupSummary, showTimeAbove, sortChats, STORAGE_KEY,
   type BookedVisit, type Chat, type Choice, type Options, type OpenReview, type Setup,
@@ -107,7 +107,7 @@ function SetupForm({ initial, options, onStart, onCancel }: { initial: Setup; op
         <label>Referral word<input value={setup.referral_word} placeholder="e.g. knee" maxLength={40} onChange={(event) => patch({ referral_word: event.target.value })} /></label>
         <label>First name<input value={setup.first_name} maxLength={40} autoComplete="off" onChange={(event) => patch({ first_name: event.target.value })} /></label>
         <label>Last name<input value={setup.last_name} maxLength={40} autoComplete="off" onChange={(event) => patch({ last_name: event.target.value })} /></label>
-        <label>Birthday<input type="date" value={setup.date_of_birth} onChange={(event) => patch({ date_of_birth: event.target.value })} /></label>
+        <label>Birthday<input type="date" max={latestBirthday()} value={setup.date_of_birth} onChange={(event) => patch({ date_of_birth: event.target.value })} /></label>
         <label>Open review<select value={setup.open_review} onChange={(event) => patch({ open_review: event.target.value as OpenReview })}>{(['auto', 'none', 'front_desk', 'full'] as const).map((value) => <option key={value} value={value}>{OPEN_REVIEW_LABELS[value]}</option>)}</select></label>
         {visitApplies(setup) && <>
           <label>Booked visit day and time (clinic, Pacific)<input type="datetime-local" value={setup.booked_visit.at} onChange={(event) => patchVisit({ at: event.target.value })} /></label>

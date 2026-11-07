@@ -1,0 +1,114 @@
+/* Public demo form (/try). Light only, on purpose: it is shown on visitors' phones at a booth and
+   must look the same everywhere, whatever the dashboard's saved theme. Colors are the dashboard's. */
+.page {
+  --navy: #05245a;
+  --blue: #0b50d0;
+  --blue-hover: #0943b0;
+  --ink: #101828;
+  --label: #344054;
+  --muted: #667085;
+  --faint: #98a2b3;
+  --line: #d0d5dd;
+  --soft-blue: #eef4ff;
+  --soft-green: #ecfdf3;
+  --green: #067647;
+  --error: #b42318;
+  /* The dashboard's dark theme colors every input from these (globals.css, [data-theme="dark"]
+     input): set here, so the form stays light even when a visitor's phone is in dark mode. */
+  --paper: #fff;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  color-scheme: light;
+}
+
+:global(html):has(.page), :global(body):has(.page) { background: #fff; color-scheme: light; }
+
+.screen {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 24px calc(28px + env(safe-area-inset-bottom));
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.mark {
+  width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
+  background: #0b4fc4; color: #fff; font-family: Georgia, 'Times New Roman', serif; font-size: 19px; font-weight: 700;
+}
+.brandName { font-size: 14px; font-weight: 600; color: var(--navy); letter-spacing: -.01em; }
+
+.body { flex: 1; display: flex; flex-direction: column; }
+
+.intro { margin-top: 44px; display: grid; gap: 10px; }
+.intro h1, .doneText h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.025em; }
+.intro p, .doneText p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--muted); }
+
+.fields { margin-top: 32px; display: grid; gap: 18px; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.field { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 500; color: var(--label); }
+
+.input, .phone {
+  height: 48px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; box-shadow: 0 1px 2px #1018280d; transition: border-color .15s, box-shadow .15s;
+}
+/* 16px text: anything smaller makes iPhone Safari zoom into the field. */
+.input { width: 100%; min-width: 0; padding: 0 14px; font: inherit; font-size: 16px; font-weight: 400; color: var(--ink); }
+.input::placeholder, .phoneInput::placeholder { color: var(--faint); }
+.input:focus, .phone:focus-within { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px #0b50d01f; }
+
+.phone { display: flex; overflow: hidden; }
+.country { display: flex; border-right: 1px solid var(--line); background: #f9fafb; }
+.page .country select {
+  height: 100%; border: 0; padding: 0 8px 0 12px; font: inherit; font-size: 16px; color: var(--ink);
+  background: transparent; cursor: pointer;
+}
+.country select:focus { outline: none; }
+.page .phoneInput {
+  flex: 1; min-width: 0; height: 100%; border: 0; padding: 0 14px; font: inherit; font-size: 16px;
+  font-weight: 400; color: var(--ink); background: transparent;
+}
+.phoneInput:focus { outline: none; }
+
+.consent { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; font-size: 13px; line-height: 1.5; color: var(--muted); cursor: pointer; }
+.consent input { width: 18px; height: 18px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--blue); }
+
+.footer { margin-top: auto; padding-top: 24px; display: grid; gap: 14px; }
+.error { margin: 0; min-height: 20px; font-size: 14px; line-height: 1.4; color: var(--error); text-align: center; }
+.error:empty { min-height: 0; }
+
+.primary, .secondary {
+  height: 52px; border-radius: 12px; font: inherit; font-size: 16px; font-weight: 500; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.primary { border: 0; background: var(--blue); color: #fff; box-shadow: 0 1px 2px #1018280d; }
+.primary:hover { background: var(--blue-hover); }
+.primary:disabled { opacity: .7; cursor: progress; }
+.primary:focus-visible, .secondary:focus-visible { outline: 3px solid #0b50d066; outline-offset: 2px; }
+.secondary { border: 1px solid var(--line); background: #fff; color: var(--label); height: 48px; }
+.secondary:hover { background: #f9fafb; }
+
+.note { margin: 0; font-size: 12px; color: var(--faint); text-align: center; }
+
+.done { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; text-align: center; }
+.check { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: var(--soft-green); color: var(--green); }
+.doneText { display: grid; gap: 10px; max-width: 320px; }
+.steps { width: 100%; margin: 12px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.steps li {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px;
+  border: 1px solid #e4e7ec; border-radius: 14px; font-size: 13px; font-weight: 500; color: var(--label);
+}
+.tile { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--soft-blue); color: var(--blue); }
+.tileBooked { background: var(--soft-green); color: var(--green); }
+
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .input, .phone, .primary, .secondary { transition: none; }
+}

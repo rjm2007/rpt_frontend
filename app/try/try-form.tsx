@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import styles from './try.module.css';
 import {
+  CASES,
   COUNTRIES,
   type CountryCode,
   type DemoForm,
@@ -10,10 +11,13 @@ import {
   formatBirthDate,
   formatPhone,
   formProblem,
+  readPhone,
   requestBody,
 } from './try-data';
 
-const EMPTY: DemoForm = { firstName: '', lastName: '', countryCode: '+1', phone: '', birthDate: '', consent: true };
+const EMPTY: DemoForm = {
+  firstName: '', lastName: '', countryCode: '+1', phone: '', birthDate: '', caseType: 'Physical Therapy', consent: true,
+};
 const newKey = () => `try-${crypto.randomUUID()}`;
 
 export function TryForm() {
@@ -77,7 +81,7 @@ export function TryForm() {
           <form className={styles.body} onSubmit={submit} noValidate>
             <div className={styles.intro}>
               <h1>Request your first visit</h1>
-              <p>We&apos;ll text you and call within a minute to find a time that works.</p>
+              <p>We&apos;ll call you within a minute to find a time that works, and text you if we miss you.</p>
             </div>
 
             <div className={styles.fields}>
@@ -109,7 +113,7 @@ export function TryForm() {
                   </label>
                   <input className={styles.phoneInput} type="tel" inputMode="tel" autoComplete="tel-national"
                     aria-labelledby="try-phone-label" placeholder={country.placeholder} value={form.phone}
-                    onChange={(e) => set({ phone: formatPhone(e.target.value, form.countryCode) })} required />
+                    onChange={(e) => set(readPhone(e.target.value, form.countryCode))} required />
                 </div>
               </div>
 
@@ -118,6 +122,19 @@ export function TryForm() {
                 <input className={styles.input} inputMode="numeric" autoComplete="bday" placeholder="MM / DD / YYYY"
                   value={form.birthDate} onChange={(e) => set({ birthDate: formatBirthDate(e.target.value) })} required />
               </label>
+
+              <fieldset className={styles.choice}>
+                <legend>What&apos;s the visit for?</legend>
+                <div className={styles.options}>
+                  {CASES.map((item) => (
+                    <label key={item.value} className={styles.option}>
+                      <input type="radio" name="case" value={item.value} checked={form.caseType === item.value}
+                        onChange={() => set({ caseType: item.value })} />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
 
               <label className={styles.consent}>
                 <input type="checkbox" checked={form.consent} onChange={(e) => set({ consent: e.target.checked })} />
@@ -141,7 +158,7 @@ export function TryForm() {
               </span>
               <div className={styles.doneText}>
                 <h1>Thanks, {doneName}</h1>
-                <p>You&apos;ll get a text from us now, and a call shortly after to book your first visit.</p>
+                <p>Elliot, our scheduling assistant, will call you in about a minute to book your first visit. Missed it? We&apos;ll text you.</p>
               </div>
               <ul className={styles.steps}>
                 <li>

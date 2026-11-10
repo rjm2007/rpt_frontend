@@ -76,6 +76,19 @@
 }
 .phoneInput:focus { outline: none; }
 
+.choice { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; gap: 6px; }
+.choice legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--label); }
+.options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.option { position: relative; cursor: pointer; }
+.option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.option span {
+  height: 48px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 1px 2px #1018280d;
+  font-size: 15px; font-weight: 500; color: var(--label); text-align: center; transition: border-color .15s, background .15s;
+}
+.option input:checked + span { border-color: var(--blue); background: var(--soft-blue); color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.option input:focus-visible + span { outline: 3px solid #0b50d066; outline-offset: 2px; }
+
 .consent { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; font-size: 13px; line-height: 1.5; color: var(--muted); cursor: pointer; }
 .consent input { width: 18px; height: 18px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--blue); }
 
@@ -110,5 +123,5 @@
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) {
-  .input, .phone, .primary, .secondary { transition: none; }
+  .input, .phone, .primary, .secondary, .option span { transition: none; }
 }

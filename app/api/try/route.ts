@@ -4,7 +4,7 @@ import { backendOrigin } from '../../dashboard-origin';
 // Public demo form (/try, conference demo 2026-11-07). No staff session: anyone with the link may
 // send it. Only the form's own fields are forwarded, to the backend's demo-form route, which is off
 // unless DEMO_FORM_ENABLED, checks the service token and caps leads per hour.
-const FIELDS = ['idempotency_key', 'first_name', 'last_name', 'country_code', 'phone', 'date_of_birth', 'contact_consent'] as const;
+const FIELDS = ['idempotency_key', 'first_name', 'last_name', 'country_code', 'phone', 'date_of_birth', 'case_type', 'contact_consent'] as const;
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
 export async function POST(request: NextRequest) {

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { errorMessage, formatBirthDate, formatPhone, formProblem, isoBirthDate, requestBody, type DemoForm } from './try-data.ts';
+import { errorMessage, formatBirthDate, formatPhone, formProblem, isoBirthDate, readPhone, requestBody, type DemoForm } from './try-data.ts';
 
-const FORM: DemoForm = { firstName: ' Jane ', lastName: 'Smith', countryCode: '+1', phone: '(949) 555-0123', birthDate: '01/16/1990', consent: true };
+const FORM: DemoForm = { firstName: ' Jane ', lastName: 'Smith', countryCode: '+1', phone: '(949) 555-0123', birthDate: '01/16/1990', caseType: 'Physical Therapy', consent: true };
 const TODAY = new Date(Date.UTC(2026, 10, 7));
 
 test('phone is formatted per country while typing', () => {
@@ -11,6 +11,18 @@ test('phone is formatted per country while typing', () => {
   assert.equal(formatPhone('94', '+1'), '94');
   assert.equal(formatPhone('9876543210', '+91'), '98765 43210');
   assert.equal(formatPhone('98765432109999', '+91'), '98765 43210');
+});
+
+test('a pasted full number switches the country and drops the code', () => {
+  // The 10 Nov bug: "+91 96545 40686" became "91965 45406".
+  assert.deepEqual(readPhone('+91 96545 40686', '+91'), { countryCode: '+91', phone: '96545 40686' });
+  assert.deepEqual(readPhone('+91 96545 40686', '+1'), { countryCode: '+91', phone: '96545 40686' });
+  assert.deepEqual(readPhone('+1 (949) 555-0123', '+91'), { countryCode: '+1', phone: '(949) 555-0123' });
+  assert.deepEqual(readPhone('19495550123', '+1'), { countryCode: '+1', phone: '(949) 555-0123' });
+  assert.deepEqual(readPhone('096545 40686', '+91'), { countryCode: '+91', phone: '96545 40686' });
+  // Typing stays as it was: a national number that starts with 91, and an 11th digit ignored.
+  assert.deepEqual(readPhone('9196545406', '+91'), { countryCode: '+91', phone: '91965 45406' });
+  assert.deepEqual(readPhone('(949) 555-01234', '+1'), { countryCode: '+1', phone: '(949) 555-0123' });
 });
 
 test('birth date gets slashes while typing', () => {
@@ -39,7 +51,7 @@ test('the first problem is shown, none for a good form', () => {
 test('the request carries digits, the code and an ISO birth date', () => {
   assert.deepEqual(requestBody({ ...FORM, countryCode: '+91', phone: '98765 43210' }, 'key-00000001'), {
     idempotency_key: 'key-00000001', first_name: 'Jane', last_name: 'Smith', country_code: '+91',
-    phone: '9876543210', date_of_birth: '1990-01-16', contact_consent: true,
+    phone: '9876543210', date_of_birth: '1990-01-16', case_type: 'Physical Therapy', contact_consent: true,
   });
 });
 

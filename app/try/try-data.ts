@@ -8,16 +8,40 @@ export const COUNTRIES: { code: CountryCode; label: string; placeholder: string 
   { code: '+91', label: '🇮🇳 +91', placeholder: '98765 43210' },
 ];
 
+// value = the booking engine's case type name (backend checks it against case_types).
+export const CASES = [
+  { value: 'Physical Therapy', label: 'Physical therapy' },
+  { value: 'Physical Therapy - Pelvic', label: 'Pelvic health' },
+] as const;
+
+export type CaseType = (typeof CASES)[number]['value'];
+
 export type DemoForm = {
   firstName: string;
   lastName: string;
   countryCode: CountryCode;
   phone: string;
   birthDate: string; // as typed: MM/DD/YYYY
+  caseType: CaseType;
   consent: boolean;
 };
 
 const digitsOf = (value: string) => value.replace(/\D/g, '');
+
+/**
+ * What lands in the number box, as country + formatted number. A pasted full number
+ * ("+91 96545 40686", "+1 949 555 0123", "09654540686") switches the country and drops the code,
+ * instead of keeping the first 10 digits (which kept the 91 and lost the last two digits).
+ */
+export function readPhone(value: string, code: CountryCode): { countryCode: CountryCode; phone: string } {
+  const digits = digitsOf(value);
+  let country = code;
+  let national = digits;
+  if (digits.length === 12 && digits.startsWith('91')) [country, national] = ['+91', digits.slice(2)];
+  else if (digits.length === 11 && digits.startsWith('1')) [country, national] = ['+1', digits.slice(1)];
+  else if (digits.length === 11 && digits.startsWith('0')) national = digits.slice(1);
+  return { countryCode: country, phone: formatPhone(national, country) };
+}
 
 /** The number as the visitor types it: (949) 555-0123 for the US, 98765 43210 for India. */
 export function formatPhone(value: string, code: CountryCode): string {
@@ -68,6 +92,7 @@ export function requestBody(form: DemoForm, idempotencyKey: string) {
     country_code: form.countryCode,
     phone: digitsOf(form.phone),
     date_of_birth: isoBirthDate(form.birthDate),
+    case_type: form.caseType,
     contact_consent: form.consent,
   };
 }

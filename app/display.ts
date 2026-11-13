@@ -65,6 +65,38 @@ export function timezoneLabel(value: unknown) {
   return US_ZONES[raw] ?? raw.replace(/[\/_-]+/g, ' ').replace(/\s+/g, ' ');
 }
 
+// A zone's short name for a time: "PT", "ET"; else what the browser calls it ("GMT+1").
+export function zoneAbbrev(value: unknown) {
+  const raw = String(value ?? '').trim() || CLINIC_TZ;
+  if (raw === CLINIC_TZ || raw === 'US/Pacific') return CLINIC_TZ_LABEL;
+  const known = US_ZONES[raw]?.match(/\(([A-Z]+)\)$/);
+  if (known) return known[1];
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: raw, timeZoneName: 'short' })
+      .formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value ?? raw;
+  } catch {
+    return raw;
+  }
+}
+
+// "Tue 27 · 9:00 AM PT": a visit in its clinic's own zone, the time the patient was told
+// (2026-11-13: the demo's clinics are on a New York Stride location, so "10:00 AM ET").
+// No zone (older backend): the dashboard's, as before.
+export function visitWhen(value: string, withMonth = false, zone?: string | null) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return '—';
+  const timeZone = zone || CLINIC_TZ;
+  let part: (options: Intl.DateTimeFormatOptions) => string;
+  try {
+    part = (options) => parsed.toLocaleString('en-US', { ...options, timeZone });
+    part({ hour: 'numeric' });
+  } catch {
+    return visitWhen(value, withMonth);  // a zone this browser does not know
+  }
+  const day = withMonth ? `${part({ month: 'short' })} ${part({ day: 'numeric' })}` : `${part({ weekday: 'short' })} ${part({ day: 'numeric' })}`;
+  return `${day} · ${part({ hour: 'numeric', minute: '2-digit' })} ${zoneAbbrev(timeZone)}`;
+}
+
 // A date of birth (YYYY-MM-DD) as "Jan 21, 2007", read as a calendar date (no time zone shift).
 export function birthDateLabel(value: unknown) {
   const raw = String(value ?? '').trim();

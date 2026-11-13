@@ -83,7 +83,8 @@ export type LeadBoardPage = {
 // GET stride-patients/{id}: the read-only Stride patient view.
 export type StridePatientView = {
   patient: StrideRow & { clinic: string | null };
-  visits: Array<{ id: number; start_utc: string | null; type: string | null; status: string; clinician: string | null; location: string | null }>;
+  // timezone: the visit's clinic zone (backend 2026-11-13).
+  visits: Array<{ id: number; start_utc: string | null; timezone?: string | null; type: string | null; status: string; clinician: string | null; location: string | null }>;
 };
 
 // Demo also has 'appointment' (Stride cancel / no-show) and 'booking' (agent could not confirm).
@@ -132,6 +133,8 @@ export type ReviewPreview = {
 
 export type BoardBooking = {
   start_utc: string;
+  // The visit's clinic zone (backend 2026-11-13); missing from an older backend.
+  timezone?: string | null;
   state: string;
   tag: BookingTag;
   type: string;

@@ -33,6 +33,9 @@ export type Appointment = {
   patient_name?: string;
   clinician?: { id: string; name: string; role: string | null };
   location_id?: number | null;
+  // The clinic's own zone (its booking location's, else the practice's; backend 2026-11-13):
+  // the visit is shown in it, the time the patient was told.
+  timezone?: string;
 };
 // waiting: we booked it, Stride's export has not shown it yet (front desk has to approve it).
 export type Approval = "waiting" | "in_stride" | "not_in_stride";
@@ -50,6 +53,8 @@ export type OpenSlotDay = {
   practitioner_name: string;
   location_id?: number;
   location?: string;
+  // The zone of date / start_local / end_local: the clinic's own (backend 2026-11-13).
+  timezone?: string;
   slots: { start_local: string; end_local: string }[];
 };
 // Who a booking belongs to. Elliot: our voice agent booked it on a call. Sheet lead: one
@@ -186,6 +191,20 @@ export function calendarWallTime(value: string, timezone = CLINIC_TZ) {
     formatter.formatToParts(new Date(value)).map((p) => [p.type, p.value]),
   );
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+// The zone a visit is shown in: its clinic's own, else the calendar's.
+export function zoneOf(item: Pick<Appointment, "timezone">, fallback = CLINIC_TZ) {
+  return item.timezone || fallback;
+}
+// The one zone every visit and open time in the data shares (the time grid is drawn in it, so a
+// visit sits on the hour the patient was told), else null when clinics are in different zones.
+export function sharedZone(data: Pick<CalendarData, "appointments" | "open_slots" | "timezone">) {
+  const zones = new Set([
+    ...data.appointments.map((a) => zoneOf(a, data.timezone)),
+    ...(data.open_slots ?? []).map((d) => d.timezone || data.timezone),
+  ]);
+  if (!zones.size) return data.timezone;
+  return zones.size === 1 ? [...zones][0] : null;
 }
 export function calendarDay(
   value = new Date().toISOString(),

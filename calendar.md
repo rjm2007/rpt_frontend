@@ -67,6 +67,13 @@ export const scheduleHours = Array.from({ length: 8 }, (_, i) => i + 9); // 9..1
 
 The calendar always renders in **one fixed timezone** (`CLINIC_TZ = 'America/Los_Angeles'`), not the browser's. Every view is labelled "Times shown in PT".
 
+**Rausch dashboard (2026-11-13):** each visit is shown in its clinic's own zone (`Appointment.timezone` from the
+backend: the booking location's, else the practice's), the time the patient was told; Pacific needs no label, any other
+zone gets a short one ("10:00 AM ET", `zoneAbbrev`). The grid places each visit (`zoneOf`) and open slot
+(`OpenSlotDay.timezone`) on its clinic's clock and labels the grid with the zone they all share (`sharedZone`; ET on
+the demo, whose clinics are on a New York Stride location), else "Clinic time". "Today" and the date range stay the
+calendar's `timezone`.
+
 Two conversion functions are the entire timezone layer (`app/display.ts`):
 
 ```ts

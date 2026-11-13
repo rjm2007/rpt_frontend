@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel, formatPhone, leadSourceLabel, birthDateLabel, activityTitle } from './display.ts';
+import { activityDescription, activityKind, BOOKED_LOCKED_HINT, canMoveOnBoard, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, leadActivity, activitySource, timezoneLabel, formatPhone, leadSourceLabel, birthDateLabel, activityTitle, visitWhen, zoneAbbrev } from './display.ts';
 import type { ActivityEntry } from './dashboard-data';
 
 test('activity shows every entry, staff and automated, and search narrows it', () => {
@@ -154,4 +154,17 @@ test('dates of birth read as calendar dates and activity titles are sentence cas
   assert.equal(activityTitle('Call: no answer'), 'Call: No answer');
   assert.equal(activityTitle('Start cadence: cadence started'), 'Cadence started');
   assert.equal(activityTitle('Lead created'), 'Lead created');
+});
+
+test('a visit shows in its clinic zone, the time the patient was told', () => {
+  // Elliot texted "Sat Jul 25 at 10:00 AM" for a New York clinic: 14:00 UTC.
+  assert.equal(visitWhen('2026-07-25T14:00:00Z', true, 'America/New_York'), 'Jul 25 · 10:00 AM ET');
+  assert.equal(visitWhen('2026-07-25T14:00:00Z', false, 'America/New_York'), 'Sat 25 · 10:00 AM ET');
+  // Pacific clinics, and an older backend without a zone, look as before.
+  assert.equal(visitWhen('2026-07-25T17:00:00Z', true, 'America/Los_Angeles'), 'Jul 25 · 10:00 AM PT');
+  assert.equal(visitWhen('2026-07-25T14:00:00Z', true), 'Jul 25 · 7:00 AM PT');
+  assert.equal(visitWhen('2026-07-25T14:00:00Z', true, 'Not/AZone'), 'Jul 25 · 7:00 AM PT');
+  assert.equal(visitWhen('not a date'), '—');
+  assert.equal(zoneAbbrev('America/Chicago'), 'CT');
+  assert.equal(zoneAbbrev(null), 'PT');
 });

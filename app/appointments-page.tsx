@@ -13,7 +13,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { SelectMenu } from "./dashboard-controls";
 import { dashboardFetch } from "./dashboard-client";
-import { clientErrorMessage, CLINIC_TZ, timezoneLabel } from "./display";
+import { clientErrorMessage, CLINIC_TZ, timezoneLabel, zoneAbbrev } from "./display";
 import type { Lead, Snapshot } from "./dashboard-data";
 import {
   Appointment,
@@ -37,6 +37,8 @@ import {
   tagLabel,
   VISIT_KINDS,
   nowMinutes,
+  sharedZone,
+  zoneOf,
   openIntervals,
   periodLabels,
   visitMark,
@@ -65,12 +67,22 @@ const clock = (iso: string, timezone: string) =>
     minute: "2-digit",
     timeZone: timezone,
   });
-const timeRange = (a: Appointment, timezone: string) =>
-  `${clock(a.start_utc, timezone)}${a.end_utc ? ` – ${clock(a.end_utc, timezone)}` : ""}`;
-const calendarZoneLabel = (timezone: string) =>
-  ["America/Los_Angeles", "US/Pacific"].includes(timezone)
-    ? "PT"
-    : timezoneLabel(timezone);
+const isPacific = (timezone: string) =>
+  ["America/Los_Angeles", "US/Pacific"].includes(timezone);
+const clockRange = (a: Appointment, zone: string) =>
+  `${clock(a.start_utc, zone)}${a.end_utc ? ` – ${clock(a.end_utc, zone)}` : ""}`;
+// A visit's time in its clinic's own zone, the time the patient was told, labelled ("ET")
+// when that is not Pacific (2026-11-13). `timezone`: the calendar's, for an older backend.
+const timeRange = (a: Appointment, timezone: string) => {
+  const zone = zoneOf(a, timezone);
+  return `${clockRange(a, zone)}${isPacific(zone) ? "" : ` ${zoneAbbrev(zone)}`}`;
+};
+const calendarZoneLabel = (timezone: string | null) =>
+  timezone === null
+    ? "Clinic time"
+    : isPacific(timezone)
+      ? "PT"
+      : timezoneLabel(timezone);
 const hoursLabel = (value: number) =>
   Number(value.toFixed(1)).toLocaleString("en-US");
 const tone = (caseTitle: string) =>
@@ -419,6 +431,7 @@ function VisitCard({
       window.removeEventListener("scroll", place, true);
     };
   }, [anchor, onClose]);
+  const zone = zoneOf(item, timezone);
   const status = visitStatus(item);
   const by = bookedBySource(item);
   const name = item.patient_name || item.full_name;
@@ -430,12 +443,12 @@ function VisitCard({
     [
       "When",
       [
-        dateLabel(calendarDay(item.start_utc, timezone), {
+        dateLabel(calendarDay(item.start_utc, zone), {
           weekday: "short",
           month: "short",
           day: "numeric",
         }),
-        `${timeRange(item, timezone)} ${calendarZoneLabel(timezone)}`,
+        `${clockRange(item, zone)} ${calendarZoneLabel(zone)}`,
         item.duration_minutes ? `${item.duration_minutes} min` : "",
       ]
         .filter(Boolean)
@@ -704,6 +717,9 @@ export function AppointmentsPage({
   const days = calendarDays(day, view);
   const key = calendarKey(day, view, leadId);
   const data = loaded?.key === key ? loaded.data : cachedCalendar(key);
+  // Visits and open times sit on their clinic's own clock; the grid's label (and its "now" line)
+  // is that zone when every clinic shown shares one (ET on the demo), else "Clinic time".
+  const gridZone = data ? sharedZone(data) : timezone;
   const error = failure?.key === key ? failure.message : "";
   const loading = !data && !error;
 
@@ -759,7 +775,8 @@ export function AppointmentsPage({
   });
   const timing = new Map(
     appointments.map((a) => {
-      const wall = calendarWallTime(a.start_utc, timezone);
+      // Each visit on its clinic's own clock (the time the patient was told), not the calendar's.
+      const wall = calendarWallTime(a.start_utc, zoneOf(a, timezone));
       return [
         a.id,
         {
@@ -994,7 +1011,7 @@ export function AppointmentsPage({
                 {periodLabel.short}
               </span>
             </h2>
-            <span className="schedule-zone">{calendarZoneLabel(timezone)}</span>
+            <span className="schedule-zone">{calendarZoneLabel(gridZone)}</span>
           </div>
           <div
             className="schedule-view-switch"
@@ -1338,7 +1355,7 @@ export function AppointmentsPage({
                             onClick={(e) => choose(a, e.currentTarget)}
                             title={`${a.full_name} · ${timeRange(a, timezone)} · ${stateLabel(a.state)} · ${tagLabel(a.tag)}`}
                           >
-                            <time>{clock(a.start_utc, timezone)}</time>
+                            <time>{clock(a.start_utc, zoneOf(a, timezone))}</time>
                             <span>{a.full_name}</span>
                             <BookingTagChip tag={a.tag} />
                           </button>
@@ -1514,7 +1531,7 @@ export function AppointmentsPage({
                             );
                           })}
                           {(() => {
-                            const now = nowMinutes(c.day, timezone);
+                            const now = nowMinutes(c.day, gridZone ?? timezone);
                             return now !== null &&
                               now >= hourStart * 60 &&
                               now <= hourEnd * 60 ? (

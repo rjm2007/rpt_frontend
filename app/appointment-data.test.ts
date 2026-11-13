@@ -23,6 +23,8 @@ import {
   visitStatus,
   appointmentMinutes,
   calendarWallTime,
+  sharedZone,
+  zoneOf,
   type Appointment,
   type OpenSlotDay,
 } from "./appointment-data.ts";
@@ -242,4 +244,21 @@ test("calendar shows a visit at the lead page's clinic time, on the clinic's day
   assert.equal(calendarDay(late), "2026-11-02");
   assert.equal(calendarWallTime(late, "America/Los_Angeles"), "2026-11-02T22:00");
   assert.equal(calendarDay(late, "America/New_York"), "2026-11-03"); // what it showed before
+});
+
+test("each visit sits on its clinic's own clock; the grid takes the zone they share", () => {
+  // Elliot texted 10:00 AM for a New York clinic (14:00 UTC); Pacific showed 7:00 AM (2026-11-13).
+  const ny = { ...appointment("e", "2026-07-25T14:00:00Z", "2026-07-25T15:00:00Z"), timezone: "America/New_York" };
+  const la = appointment("p", "2026-07-25T17:00:00Z", "2026-07-25T18:00:00Z");
+  assert.equal(calendarWallTime(ny.start_utc, zoneOf(ny, "America/Los_Angeles")), "2026-07-25T10:00");
+  assert.equal(appointmentMinutes(ny, zoneOf(ny)), 10 * 60);
+  assert.equal(zoneOf(la, "America/Los_Angeles"), "America/Los_Angeles");  // older backend: the calendar's
+  const slot = (timezone?: string): OpenSlotDay => ({
+    date: "2026-07-25", practitioner_id: "1", practitioner_name: "A", timezone, slots: [],
+  });
+  const base = { timezone: "America/Los_Angeles" };
+  assert.equal(sharedZone({ ...base, appointments: [ny], open_slots: [slot("America/New_York")] }), "America/New_York");
+  assert.equal(sharedZone({ ...base, appointments: [ny, la] }), null);  // mixed: "Clinic time"
+  assert.equal(sharedZone({ ...base, appointments: [ny], open_slots: [slot()] }), null);
+  assert.equal(sharedZone({ ...base, appointments: [] }), "America/Los_Angeles");
 });

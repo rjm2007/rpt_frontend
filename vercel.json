@@ -1,5 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "npm run build:vercel"
+  "buildCommand": "npm run build:vercel",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://demo.aibolt.ai/$1",
+      "permanent": false
+    }
+  ]
 }
